@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changes
+
+- Tabs: right-click or middle-click a link to open it in a background tab. With two or more tabs a strip shows under the navigation bar (click to switch, `×` to close, `[+]` for a new tab); Alt+1..9 switch and Alt+W closes. One page is live at a time: switching loads the tab's page again and restores its scroll position, so a background tab costs no memory. Tabs are saved in `~/.local/state/tetron-browser/tabs.tsv` and reopen on the next start without a URL; a URL opens as a new tab
+- Alt+key reaches the browser as Alt+key (terminals send Escape then the key, which arrived as two separate presses)
+
+### Bug Fixes
+
+- Page text is drawn on the row where it is: it sat one row above its background and above where clicks land, so clicking a link on the row it showed on missed it
+- A typed address was freed before Chromium read it (the string's memory was released when the input thread moved on); it now moves with the load request
+
 ## [0.15.2] - 2026-11-07
 
 ### Changes

@@ -19,7 +19,9 @@ pub struct Renderer {
     nav: Navigation,
     cells: Vec<(Cell, Cell)>,
     painter: Painter,
+    /// The page in cells; the buffer also has `ui_rows` rows above it.
     size: Size,
+    ui_rows: u32,
 }
 
 impl Renderer {
@@ -29,7 +31,13 @@ impl Renderer {
             cells: Vec::with_capacity(0),
             painter: Painter::new(),
             size: Size::new(0, 0),
+            ui_rows: 1,
         }
+    }
+
+    /// UI rows above the page in the cell buffer now.
+    pub fn ui_rows(&self) -> u32 {
+        self.ui_rows
     }
 
     pub fn enable_true_color(&mut self) {
@@ -39,16 +47,27 @@ impl Renderer {
     pub fn keypress(&mut self, key: &Key) -> io::Result<NavigationAction> {
         let action = self.nav.keypress(key);
 
+        self.sync_ui_rows();
         Ok(action)
     }
-    pub fn mouse_up(&mut self, origin: Point) -> io::Result<NavigationAction> {
-        let action = self.nav.mouse_up(origin);
+
+    /// Ask for a resize when the tab strip appears or goes: the window then
+    /// gives the page one row less or more (see `ui::ui_rows`).
+    fn sync_ui_rows(&mut self) {
+        if crate::ui::set_ui_rows(self.nav.ui_rows()) {
+            unsafe { libc::raise(libc::SIGWINCH) };
+        }
+    }
+
+    pub fn mouse_up(&mut self, origin: Point, button: u8) -> io::Result<NavigationAction> {
+        let action = self.nav.mouse_up(origin, button);
 
         Ok(action)
     }
-    pub fn mouse_down(&mut self, origin: Point) -> io::Result<NavigationAction> {
-        let action = self.nav.mouse_down(origin);
+    pub fn mouse_down(&mut self, origin: Point, button: u8) -> io::Result<NavigationAction> {
+        let action = self.nav.mouse_down(origin, button);
 
+        self.sync_ui_rows();
         Ok(action)
     }
     pub fn mouse_move(&mut self, origin: Point) -> io::Result<NavigationAction> {
@@ -57,8 +76,12 @@ impl Renderer {
         Ok(action)
     }
 
-    pub fn push_nav(&mut self, url: &str, can_go_back: bool, can_go_forward: bool) {
-        self.nav.push(url, can_go_back, can_go_forward)
+    /// Returns a script to run in the new page (scroll restore on tab switch).
+    pub fn push_nav(&mut self, url: &str, can_go_back: bool, can_go_forward: bool) -> Option<String> {
+        let script = self.nav.push(url, can_go_back, can_go_forward);
+
+        self.sync_ui_rows();
+        script
     }
 
     pub fn get_size(&self) -> Size {
@@ -66,13 +89,19 @@ impl Renderer {
     }
 
     pub fn set_size(&mut self, size: Size) {
-        self.nav.set_size(size);
+        self.set_layout(size, 1)
+    }
+
+    /// The page size and the UI rows above it, from the window on resize.
+    pub fn set_layout(&mut self, size: Size, ui_rows: u32) {
+        self.nav.set_size(size, ui_rows);
         self.size = size;
+        self.ui_rows = ui_rows;
 
         let mut x = 0;
         let mut y = 0;
         let bound = size.width - 1;
-        let cells = (size.width + size.width * size.height) as usize;
+        let cells = (size.width * ui_rows + size.width * size.height) as usize;
 
         self.cells.clear();
         self.cells.resize_with(cells, || {
@@ -93,16 +122,15 @@ impl Renderer {
         let size = self.size;
 
         for (origin, element) in self.nav.render(size) {
+            if origin.y >= self.ui_rows as i32 {
+                continue;
+            }
+
             self.fill_rect(
                 Rect::new(origin.x, origin.y, element.text.width() as u32, 1),
                 element.background,
             );
-            self.draw_text(
-                &element.text,
-                origin * (2, 1),
-                Size::splat(0),
-                element.foreground,
-            );
+            self.draw_ui_text(&element.text, origin, element.foreground);
         }
 
         self.painter.begin()?;
@@ -156,8 +184,10 @@ impl Renderer {
         };
         let pair = |x, y| pixel(x, y).avg_with(pixel(x, y + 1));
 
+        let ui_rows = self.ui_rows as usize;
+
         for y in top..bottom {
-            let index = (y + 1) * viewport.width;
+            let index = (y + ui_rows) * viewport.width;
             let start = index + left;
             let end = index + right;
             let (mut x, y) = (left * 2, y * 4);
@@ -182,7 +212,13 @@ impl Renderer {
     }
 
     pub fn set_title(&mut self, title: &str) -> io::Result<()> {
-        self.nav.set_title(title);
+        let shown = self.nav.set_title(title);
+
+        self.sync_ui_rows();
+
+        if !shown {
+            return Ok(());
+        }
 
         let mut stdout = io::stdout();
 
@@ -191,6 +227,34 @@ impl Renderer {
         write!(stdout, "\x1b]2;{title}\x07")?;
 
         stdout.flush()
+    }
+
+    /// Text in the UI rows at a cell position (no page offset, no wrapping).
+    fn draw_ui_text(&mut self, text: &str, origin: Point, color: Color) {
+        let width = self.size.width as i32;
+        let mut x = origin.x;
+
+        for grapheme in UnicodeSegmentation::graphemes(text, true) {
+            let w = grapheme.width();
+
+            for index in 0..w {
+                if x < 0 || x >= width {
+                    return;
+                }
+
+                let at = (origin.y * width + x) as usize;
+
+                if let Some((_, cell)) = self.cells.get_mut(at) {
+                    let next = Grapheme { color, index, width: w, char: grapheme.to_string() };
+
+                    if cell.grapheme.as_ref().map_or(true, |g| g.color != next.color || g.char != next.char) {
+                        cell.grapheme = Some(Rc::new(next));
+                    }
+                }
+
+                x += 1;
+            }
+        }
     }
 
     pub fn fill_rect(&mut self, rect: Rect, color: Color) {
@@ -240,7 +304,7 @@ impl Renderer {
         let viewport = &self.size.cast::<usize>();
 
         if size.width > 2 && size.height > 2 {
-            let origin = (origin.cast::<f32>() / (2.0, 4.0) + (0.0, 1.0)).round();
+            let origin = (origin.cast::<f32>() / (2.0, 4.0) + (0.0, self.ui_rows as f32)).round();
             let size = (size.cast::<f32>() / (2.0, 4.0)).round();
             let left = (origin.x.max(0.0) as usize).min(viewport.width);
             let right = ((origin.x + size.width).max(0.0) as usize).min(viewport.width);
@@ -258,7 +322,9 @@ impl Renderer {
             }
         } else {
             // Compute the buffer index based on the position
-            let index = origin.x / 2 + (origin.y + 1) / 4 * (viewport.width as i32);
+            // Page text sits below the UI rows, like the page background (it
+            // used to sit one row too high, above the place clicks reach).
+            let index = origin.x / 2 + ((origin.y + 1) / 4 + self.ui_rows as i32) * (viewport.width as i32);
             let mut iter = self.cells[len.min(index as usize)..].iter_mut();
 
             // Get every Unicode grapheme in the input string

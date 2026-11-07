@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString};
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc, Mutex, OnceLock};
 use std::{env, io, thread};
 
 use libc::{c_char, c_float, c_int, c_uchar, c_uint, c_void, size_t};
@@ -122,11 +122,20 @@ fn main() -> io::Result<Option<i32>> {
             .arg("--disable-threaded-animation");
     }
 
-    // No page named: open the home page (bookmarks) instead of about:blank.
+    // No page named: reopen the saved tabs on their active tab, else open
+    // the home page (bookmarks) instead of about:blank.
     let mut args = cmd.args;
 
     if !crate::home::has_url_arg(&args) {
-        args.push(crate::home::url());
+        use crate::ui::{navigation::ENV_RESTORED, tabs};
+
+        match tabs::Tabs::saved_active_url(tabs::session_path()) {
+            Some(url) => {
+                command.env(ENV_RESTORED, "1");
+                args.push(url)
+            }
+            None => args.push(crate::home::url()),
+        }
     }
 
     let output = command
@@ -194,12 +203,13 @@ pub extern "C" fn carbonyl_renderer_resize(bridge: RendererPtr) {
     let mut bridge = bridge.unwrap().lock().unwrap();
     let window = bridge.window.update();
     let cells = window.cells.clone();
+    let ui_rows = window.ui_rows;
 
     log::debug!("resizing renderer, terminal window: {:?}", window);
 
     bridge
         .renderer
-        .render(move |renderer| renderer.set_size(cells));
+        .render(move |renderer| renderer.set_layout(cells, ui_rows));
 }
 
 #[no_mangle]
@@ -213,7 +223,9 @@ pub extern "C" fn carbonyl_renderer_push_nav(
     let (mut bridge, url) = (bridge.unwrap().lock().unwrap(), url.to_owned());
 
     bridge.renderer.render(move |renderer| {
-        renderer.push_nav(url.to_str().unwrap(), can_go_back, can_go_forward)
+        if let Some(script) = renderer.push_nav(url.to_str().unwrap(), can_go_back, can_go_forward) {
+            go_to(script)
+        }
     });
 }
 
@@ -308,6 +320,19 @@ pub extern "C" fn carbonyl_renderer_get_size(bridge: RendererPtr) -> CSize {
     bridge.window.browser.into()
 }
 
+/// Chromium's input functions, kept once input starts so page loads can be
+/// started from any callback (tab switches, scroll restores).
+static DELEGATE: OnceLock<BrowserDelegate> = OnceLock::new();
+
+/// Load `url` (or run a `javascript:` URL) on the browser main thread. The
+/// string moves into the task: Chromium reads it when the task runs, later.
+fn go_to(url: String) {
+    let Some(&delegate) = DELEGATE.get() else { return };
+    let Ok(url) = CString::new(url) else { return };
+
+    unsafe { post_task(delegate.post_task, move || (delegate.go_to)(url.as_ptr())) }
+}
+
 extern "C" fn post_task_handler(callback: *mut c_void) {
     let mut closure = unsafe { Box::from_raw(callback as *mut Box<dyn FnMut()>) };
 
@@ -339,6 +364,7 @@ where
 pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut BrowserDelegate) {
     let bridge = unsafe { &*bridge };
     let delegate = unsafe { *delegate };
+    let _ = DELEGATE.set(delegate);
 
     // Chromium has installed its SIGWINCH handler by now; run it on the
     // browser main thread instead of whichever thread gets the signal.
@@ -367,11 +393,13 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
         listen(|mut events| {
             bridge.lock().unwrap().renderer.render(move |renderer| {
                 let get_scale = || bridge.lock().unwrap().window.scale;
+                // Page pixels of a terminal cell, below the UI rows.
+                let ui_rows = renderer.ui_rows() as f32;
                 let scale = |col, row| {
                     let scale = get_scale();
 
                     scale
-                        .mul(((col as f32 + 0.5), (row as f32 - 0.5)))
+                        .mul(((col as f32 + 0.5), (row as f32 - ui_rows + 0.5)))
                         .floor()
                         .cast()
                         .into()
@@ -383,10 +411,13 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                         NavigationAction::GoBack() => emit!(go_back()),
                         NavigationAction::GoForward() => emit!(go_forward()),
                         NavigationAction::Refresh() => emit!(refresh()),
-                        NavigationAction::GoTo(url) => {
-                            let c_str = CString::new(url).unwrap();
+                        NavigationAction::GoTo(url) => go_to(url),
+                        NavigationAction::Run(urls) => urls.into_iter().for_each(go_to),
+                        NavigationAction::OpenLinkAt(cell) => {
+                            let (x, y): (u32, u32) = scale(cell.x as usize, cell.y as usize);
 
-                            emit!(go_to(c_str.as_ptr()))
+                            log::debug!("open link at cell {cell:?} = px {x},{y}");
+                            go_to(crate::ui::navigation::open_link_script(x as i32, y as i32))
                         }
                     };
 
@@ -407,25 +438,23 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                             // Chromium's scroll call is vertical only; scroll
                             // sideways from inside the page, 6 columns a notch.
                             let px = (delta as f32 * 6.0 * get_scale().width).round();
-                            let script = format!("javascript:void(window.scrollBy({px},0))");
-                            let c_str = CString::new(script).unwrap();
 
-                            emit!(go_to(c_str.as_ptr()))
+                            go_to(format!("javascript:void(window.scrollBy({px},0))"))
                         }
                         KeyPress { key } => {
                             if dispatch(renderer.keypress(&key).unwrap()) {
                                 emit!(key_press(key.char as c_char))
                             }
                         }
-                        MouseUp { col, row } => {
-                            if dispatch(renderer.mouse_up((col as _, row as _).into()).unwrap()) {
+                        MouseUp { col, row, button } => {
+                            if dispatch(renderer.mouse_up((col as _, row as _).into(), button).unwrap()) {
                                 let (width, height) = scale(col, row);
 
                                 emit!(mouse_up(width, height))
                             }
                         }
-                        MouseDown { col, row } => {
-                            if dispatch(renderer.mouse_down((col as _, row as _).into()).unwrap()) {
+                        MouseDown { col, row, button } => {
+                            if dispatch(renderer.mouse_down((col as _, row as _).into(), button).unwrap()) {
                                 let (width, height) = scale(col, row);
 
                                 emit!(mouse_down(width, height))

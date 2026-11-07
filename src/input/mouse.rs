@@ -60,13 +60,14 @@ impl Mouse {
             } else {
                 let col = col as usize - 1;
                 let row = row as usize - 1;
+                let button = (btn & 0x03) as u8;
 
                 if key == b'm' {
-                    Event::MouseUp { row, col }
+                    Event::MouseUp { row, col, button }
                 } else if Mask::MouseMove & btn {
                     Event::MouseMove { row, col }
                 } else {
-                    Event::MouseDown { row, col }
+                    Event::MouseDown { row, col, button }
                 }
             }
         })
@@ -140,6 +141,8 @@ mod tests {
         assert_eq!(delta("67;5;5M"), (1, 0));
         assert_eq!(delta("68;5;5M"), (-1, 0));
         assert_eq!(delta("69;5;5M"), (1, 0));
-        assert!(matches!(event("0;5;5M"), Some(Event::MouseDown { col: 4, row: 4 })));
+        assert!(matches!(event("0;5;5M"), Some(Event::MouseDown { col: 4, row: 4, button: 0 })));
+        assert!(matches!(event("2;5;5M"), Some(Event::MouseDown { button: 2, .. })));
+        assert!(matches!(event("1;5;5m"), Some(Event::MouseUp { button: 1, .. })));
     }
 }

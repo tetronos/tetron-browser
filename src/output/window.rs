@@ -10,8 +10,10 @@ pub struct Window {
     pub dpi: f32,
     /// Size of a terminal cell in pixels
     pub scale: Size<f32>,
-    /// Size of the termina window in cells
+    /// Size of the page in cells: the terminal minus the UI rows above it
     pub cells: Size,
+    /// Terminal rows above the page (navigation bar, tab strip)
+    pub ui_rows: u32,
     /// Size of the browser window in pixels
     pub browser: Size,
     /// Command line arguments
@@ -25,6 +27,7 @@ impl Window {
             dpi: 1.0,
             scale: (0.0, 0.0).into(),
             cells: (0, 0).into(),
+            ui_rows: 1,
             browser: (0, 0).into(),
             cmd: CommandLine::parse(),
         };
@@ -78,7 +81,8 @@ impl Window {
         }
 
         let zoom = 1.5 * self.cmd.zoom;
-        let cells = Size::new(term.width.max(1), term.height.max(2) - 1);
+        let rows = crate::ui::ui_rows();
+        let cells = Size::new(term.width.max(1), term.height.max(rows as u16 + 1) - rows as u16);
         let auto_scale = false;
         let cell_pixels = if auto_scale {
             Size::new(cell.width as f32, cell.height as f32) / cells.cast()
@@ -93,7 +97,8 @@ impl Window {
         // A virtual cell should contain a 2x4 pixel quadrant
         self.scale = Size::new(2.0, 4.0) / self.dpi;
         // Keep some space for the UI
-        self.cells = Size::new(term.width.max(1), term.height.max(2) - 1).cast();
+        self.ui_rows = rows;
+        self.cells = cells.cast();
         self.browser = self.cells.cast::<f32>().mul(self.scale).ceil().cast();
 
         self
