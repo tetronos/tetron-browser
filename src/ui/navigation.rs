@@ -24,8 +24,13 @@ pub struct NavigationElement {
     pub foreground: Color,
 }
 
+/// Column where the URL text starts: four 3-column buttons, `[` and a space.
+const URL_COLUMN: usize = 14;
+
 pub struct Navigation {
     url: Option<String>,
+    /// Resolved on first use: resolving can write the default bookmarks page.
+    home: Option<String>,
     size: Size,
     cursor: Option<usize>,
     can_go_back: bool,
@@ -36,6 +41,7 @@ impl Navigation {
     pub fn new() -> Self {
         Self {
             url: None,
+            home: None,
             size: (0, 0).into(),
             cursor: None,
             can_go_back: false,
@@ -44,7 +50,7 @@ impl Navigation {
     }
 
     pub fn cursor(&self) -> Option<Point> {
-        Some((11 + self.cursor? as i32, 0).into())
+        Some((URL_COLUMN as i32 + self.cursor? as i32, 0).into())
     }
 
     pub fn keypress(&mut self, key: &Key) -> NavigationAction {
@@ -129,8 +135,9 @@ impl Navigation {
             0..=2 => NavigationAction::GoBack(),
             3..=5 => NavigationAction::GoForward(),
             6..=8 => NavigationAction::Refresh(),
-            11.. => {
-                self.cursor = Some(self.url_size().min(origin.x as usize - 11));
+            9..=11 => NavigationAction::GoTo(self.home.get_or_insert_with(crate::home::url).clone()),
+            x if x as usize >= URL_COLUMN => {
+                self.cursor = Some(self.url_size().min(x as usize - URL_COLUMN));
 
                 log::debug!("setting cursor to {:?}", self.cursor);
 
@@ -189,7 +196,7 @@ impl Navigation {
     }
 
     pub fn render(&self, size: Size) -> Vec<(Point, NavigationElement)> {
-        let ui_elements = 13;
+        let ui_elements = URL_COLUMN as u32 + 2;
         let space = if size.width >= ui_elements {
             (size.width - ui_elements) as usize
         } else {
@@ -205,6 +212,7 @@ impl Navigation {
             self.render_btn("\u{276e}", self.can_go_back),
             self.render_btn("\u{276f}", self.can_go_forward),
             self.render_btn("↻", true),
+            self.render_btn("\u{2302}", true),
             self.render_btn(&padded, true),
         ] {
             for element in list {
@@ -217,5 +225,45 @@ impl Navigation {
         }
 
         elements
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nav() -> Navigation {
+        let mut nav = Navigation::new();
+        nav.home = Some("file:///home/u/.config/tetron-browser/bookmarks.html".into());
+        nav.push("https://example.com", true, false);
+        nav
+    }
+
+    #[test]
+    fn home_button_sits_after_refresh_and_goes_home() {
+        let mut nav = nav();
+        let row = nav.render((40, 1).into());
+        let text: String = row.iter().map(|(_, e)| e.text.as_str()).collect();
+
+        assert!(text.starts_with("[\u{276e}][\u{276f}][↻][\u{2302}][ https://example.com"), "{text}");
+        assert_eq!(text.width(), 40);
+
+        for x in 9..=11 {
+            match nav.mouse_down((x, 0).into()) {
+                NavigationAction::GoTo(url) => assert!(url.ends_with("/bookmarks.html")),
+                _ => panic!("column {x} is not the home button"),
+            }
+        }
+        assert!(matches!(nav.mouse_down((7, 0).into()), NavigationAction::Refresh()));
+    }
+
+    #[test]
+    fn clicking_the_url_puts_the_cursor_under_the_click() {
+        let mut nav = nav();
+
+        nav.mouse_down((URL_COLUMN as i32 + 8, 0).into());
+        assert_eq!(nav.cursor(), Some((URL_COLUMN as i32 + 8, 0).into()));
+        nav.mouse_down((12, 0).into());
+        assert_eq!(nav.cursor(), None);
     }
 }

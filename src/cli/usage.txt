@@ -13,3 +13,15 @@ Options:
     -d, --debug                enable debug logs
     -h, --help                 display this help message
     -v, --version              output the version number
+
+Home page:
+    With no url it opens the home page; the [⌂] button in the bar goes there.
+    The first of these is used:
+      TETRON_BROWSER_HOME=<url or path>    environment variable
+      ~/.config/tetron-browser/home        file whose first line is a url or path
+      ~/.config/tetron-wm/bookmarks.html   bookmarks shared with tetron-wm
+      ~/.config/tetron-wm/start.html       tetron-wm-startpage's page
+      ~/.config/tetron-browser/bookmarks.html
+                                           written the first time from a default
+    (~/.config is $XDG_CONFIG_HOME when set.) The bookmarks pages are Netscape
+    bookmark files: edit them by hand, or import them into another browser.

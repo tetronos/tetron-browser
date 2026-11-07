@@ -122,8 +122,15 @@ fn main() -> io::Result<Option<i32>> {
             .arg("--disable-threaded-animation");
     }
 
+    // No page named: open the home page (bookmarks) instead of about:blank.
+    let mut args = cmd.args;
+
+    if !crate::home::has_url_arg(&args) {
+        args.push(crate::home::url());
+    }
+
     let output = command
-        .args(cmd.args)
+        .args(args)
         .env(EnvVar::ShellMode, "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())

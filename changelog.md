@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changes
+
+- Opens the home page instead of a blank page when no URL is given: a bookmarks page with a DuckDuckGo Lite search box, in the Netscape bookmark file format other browsers import and export. Written to `~/.config/tetron-browser/bookmarks.html` the first time; tetron-wm's bookmarks page is used instead when present, and `TETRON_BROWSER_HOME` or `~/.config/tetron-browser/home` set another page (see `--help`)
+- A home button `[⌂]` in the navigation bar, after reload
+
 ## [0.15.1] - 2026-11-06
 
 First published release of tetron-browser (the v0.15.0 tag was never released).
