@@ -6,9 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Opens the home page instead of a blank page when no URL is given: a bookmarks page with a DuckDuckGo Lite search box, in the Netscape bookmark file format other browsers import and export. Written to `~/.config/tetron-browser/bookmarks.html` the first time; tetron-wm's bookmarks page is used instead when present, and `TETRON_BROWSER_HOME` or `~/.config/tetron-browser/home` set another page (see `--help`)
+- Opens the home page instead of a blank page when no URL is given: a bookmarks page with a DuckDuckGo Lite search box, in the Netscape bookmark file format other browsers import and export. It is `~/.config/tetron-browser/bookmarks.html`, created the first time from tetron-wm's older `bookmarks.txt` when that exists, else from a default list; tetron-wm's Start Page shows the same file. Works without tetron-wm. `TETRON_BROWSER_HOME` or `~/.config/tetron-browser/home` set another page (see `--help`)
 - A home button `[⌂]` in the navigation bar, after reload
-- A bookmark button `[☆]`: adds the page with its title to the "Links" folder of the bookmarks file (tetron-wm's when present, so both share one list); `[★]` shows a bookmarked page and removes it on a second click
+- A bookmark button `[☆]`: adds the page with its title to the "Links" folder of the bookmarks file; `[★]` shows a bookmarked page and removes it on a second click
 - Zoom buttons `[−][100%][+]`: 50% to 300% in steps, the percentage resets to 100%. The zoom is a style on the page, so a new page starts at 100%
 - Sideways scrolling with the mouse: a tilting wheel or sideways touchpad swipe, and Shift+wheel. Before, sideways wheel events and Shift+wheel scrolled up or down
 

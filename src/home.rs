@@ -4,15 +4,16 @@
 //! The first of these wins:
 //! 1. `TETRON_BROWSER_HOME` (a URL or a file path),
 //! 2. the first line of `<config>/tetron-browser/home` (same),
-//! 3. `<config>/tetron-wm/bookmarks.html`, the bookmarks page shared with tetron-wm,
-//! 4. `<config>/tetron-wm/start.html`, the page `tetron-wm-startpage` renders
-//!    from its older `bookmarks.txt`,
-//! 5. `<config>/tetron-browser/bookmarks.html`, written from the built-in
-//!    default the first time it is needed.
+//! 3. `<config>/tetron-browser/bookmarks.html`, the bookmarks page.
 //!
-//! `<config>` is `$XDG_CONFIG_HOME`, else `~/.config`. The bookmarks pages are
-//! Netscape bookmark files: valid HTML, and the format other browsers import
-//! and export.
+//! The bookmarks page belongs to tetron-browser, which works without
+//! tetron-wm; tetron-wm's Start Page (`tetron-wm-startpage`) shows and edits
+//! the same file. Whichever comes first creates it: from tetron-wm's older
+//! `<config>/tetron-wm/bookmarks.txt` when that exists (the old file is kept),
+//! else from the built-in default.
+//!
+//! `<config>` is `$XDG_CONFIG_HOME`, else `~/.config`. The page is a Netscape
+//! bookmark file: valid HTML, and the format other browsers import and export.
 
 use std::{
     env, fs,
@@ -65,44 +66,27 @@ pub fn resolve(env_home: Option<String>, config: &Path) -> String {
         return to_url(home.trim());
     }
 
-    let wm = config.join("tetron-wm");
-
-    for page in [wm.join("bookmarks.html"), wm.join("start.html")] {
-        if page.is_file() {
-            return file_url(&page);
-        }
-    }
-
-    match own_bookmarks(config) {
+    match bookmarks_file_in(config) {
         Some(page) => file_url(&page),
         None => "about:blank".to_owned(),
     }
 }
 
-/// The bookmarks file the bookmark button adds to: tetron-wm's when present
-/// (one list for both), else tetron-browser's own, written from the default
-/// the first time. `None` when it can not be written.
+/// The bookmarks page, created the first time (see the module documentation).
+/// `None` when it can not be written.
 pub fn bookmarks_file() -> Option<PathBuf> {
     bookmarks_file_in(&config_dir()?)
 }
 
 pub fn bookmarks_file_in(config: &Path) -> Option<PathBuf> {
-    let shared = config.join("tetron-wm/bookmarks.html");
-
-    if shared.is_file() {
-        Some(shared)
-    } else {
-        own_bookmarks(config)
-    }
-}
-
-fn own_bookmarks(config: &Path) -> Option<PathBuf> {
     let own = config.join("tetron-browser");
     let page = own.join("bookmarks.html");
+    let first = || match fs::read_to_string(config.join("tetron-wm/bookmarks.txt")) {
+        Ok(txt) => crate::bookmarks::from_txt(&txt),
+        Err(_) => DEFAULT_BOOKMARKS.to_owned(),
+    };
 
-    if page.is_file()
-        || (fs::create_dir_all(&own).is_ok() && fs::write(&page, DEFAULT_BOOKMARKS).is_ok())
-    {
+    if page.is_file() || (fs::create_dir_all(&own).is_ok() && fs::write(&page, first()).is_ok()) {
         Some(page)
     } else {
         None
@@ -176,16 +160,24 @@ mod tests {
     }
 
     #[test]
-    fn prefers_override_then_home_file_then_tetron_wm_pages() {
-        let dir = temp("order");
+    fn first_page_comes_from_tetron_wm_bookmarks_txt_when_there() {
+        let dir = temp("txt");
         let wm = dir.join("tetron-wm");
         fs::create_dir_all(&wm).unwrap();
+        fs::write(wm.join("bookmarks.txt"), "[News]\nHN | https://news.ycombinator.com\n").unwrap();
 
-        fs::write(wm.join("start.html"), "").unwrap();
-        assert_eq!(resolve(None, &dir), format!("file://{}/start.html", wm.display()));
+        let page = bookmarks_file_in(&dir).unwrap();
+        let text = fs::read_to_string(&page).unwrap();
 
-        fs::write(wm.join("bookmarks.html"), "").unwrap();
-        assert_eq!(resolve(None, &dir), format!("file://{}/bookmarks.html", wm.display()));
+        assert_eq!(page, dir.join("tetron-browser/bookmarks.html"));
+        assert!(crate::bookmarks::contains(&text, "https://news.ycombinator.com"));
+        assert!(!crate::bookmarks::contains(&text, "https://en.wikipedia.org"));
+        assert!(wm.join("bookmarks.txt").exists());
+    }
+
+    #[test]
+    fn prefers_override_then_home_file_then_bookmarks() {
+        let dir = temp("order");
 
         fs::create_dir_all(dir.join("tetron-browser")).unwrap();
         fs::write(dir.join("tetron-browser/home"), "# my page\n\nhttps://example.com\n").unwrap();
@@ -195,8 +187,7 @@ mod tests {
         assert_eq!(resolve(Some("  ".into()), &dir), "https://example.com");
         assert!(!dir.join("tetron-browser/bookmarks.html").exists());
 
-        assert_eq!(bookmarks_file_in(&dir), Some(wm.join("bookmarks.html")));
-        fs::remove_file(wm.join("bookmarks.html")).unwrap();
-        assert_eq!(bookmarks_file_in(&dir), Some(dir.join("tetron-browser/bookmarks.html")));
+        fs::remove_file(dir.join("tetron-browser/home")).unwrap();
+        assert_eq!(resolve(None, &dir), format!("file://{}/tetron-browser/bookmarks.html", dir.display()));
     }
 }

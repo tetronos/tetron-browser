@@ -27,11 +27,8 @@ Home page:
     The first of these is used:
       TETRON_BROWSER_HOME=<url or path>    environment variable
       ~/.config/tetron-browser/home        file whose first line is a url or path
-      ~/.config/tetron-wm/bookmarks.html   bookmarks shared with tetron-wm
-      ~/.config/tetron-wm/start.html       tetron-wm-startpage's page
-      ~/.config/tetron-browser/bookmarks.html
-                                           written the first time from a default
-    (~/.config is $XDG_CONFIG_HOME when set.) The bookmarks pages are Netscape
-    bookmark files: edit them by hand, or import them into another browser.
-    [☆] adds to ~/.config/tetron-wm/bookmarks.html when it exists (one list with
-    tetron-wm), else to ~/.config/tetron-browser/bookmarks.html.
+      ~/.config/tetron-browser/bookmarks.html   your bookmarks
+    (~/.config is $XDG_CONFIG_HOME when set.) [☆] adds to the same bookmarks file.
+    It is a Netscape bookmark file: edit it by hand, or import it into another
+    browser. Created the first time from tetron-wm's older bookmarks.txt when that
+    exists, else from a default list. tetron-wm's Start Page shows the same file.

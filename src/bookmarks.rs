@@ -89,6 +89,46 @@ pub fn remove(text: &str, url: &str) -> String {
         + "\n"
 }
 
+/// A bookmarks page from tetron-wm's older `bookmarks.txt`: a `[Folder]` line
+/// starts a folder, then one `Title | URL` per line, `#` starts a comment.
+/// Lines before any folder go to `Links`. Same header as the default page.
+pub fn from_txt(txt: &str) -> String {
+    let default = crate::home::DEFAULT_BOOKMARKS;
+    let mut out = default[..default.find("<DL><p>").unwrap_or(default.len())].to_owned();
+    let mut folders: Vec<(String, Vec<(String, String)>)> = Vec::new();
+
+    for line in txt.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            folders.push((name.to_owned(), Vec::new()));
+        } else if let Some((title, url)) = line.split_once('|') {
+            if folders.is_empty() {
+                folders.push((DEFAULT_FOLDER.to_owned(), Vec::new()));
+            }
+
+            folders.last_mut().unwrap().1.push((title.trim().to_owned(), url.trim().to_owned()));
+        }
+    }
+
+    out.push_str("<DL><p>\n");
+
+    for (name, items) in folders {
+        out.push_str(&format!("    <DT><H3>{}</H3>\n    <DL><p>\n", escape(&name)));
+
+        for (title, url) in items {
+            let title = if title.is_empty() { url.as_str() } else { title.as_str() };
+            out.push_str(&format!("        <DT><A {}>{}</A>\n", href(&url), escape(title)));
+        }
+
+        out.push_str("    </DL><p>\n");
+    }
+
+    out + "</DL><p>\n"
+}
+
 /// Add `url` to the file at `path`, or remove it when already there.
 /// Returns whether it is bookmarked afterwards.
 pub fn toggle(path: &Path, title: &str, url: &str) -> io::Result<bool> {
