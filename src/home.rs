@@ -73,14 +73,39 @@ pub fn resolve(env_home: Option<String>, config: &Path) -> String {
         }
     }
 
+    match own_bookmarks(config) {
+        Some(page) => file_url(&page),
+        None => "about:blank".to_owned(),
+    }
+}
+
+/// The bookmarks file the bookmark button adds to: tetron-wm's when present
+/// (one list for both), else tetron-browser's own, written from the default
+/// the first time. `None` when it can not be written.
+pub fn bookmarks_file() -> Option<PathBuf> {
+    bookmarks_file_in(&config_dir()?)
+}
+
+pub fn bookmarks_file_in(config: &Path) -> Option<PathBuf> {
+    let shared = config.join("tetron-wm/bookmarks.html");
+
+    if shared.is_file() {
+        Some(shared)
+    } else {
+        own_bookmarks(config)
+    }
+}
+
+fn own_bookmarks(config: &Path) -> Option<PathBuf> {
+    let own = config.join("tetron-browser");
     let page = own.join("bookmarks.html");
 
     if page.is_file()
         || (fs::create_dir_all(&own).is_ok() && fs::write(&page, DEFAULT_BOOKMARKS).is_ok())
     {
-        file_url(&page)
+        Some(page)
     } else {
-        "about:blank".to_owned()
+        None
     }
 }
 
@@ -169,5 +194,9 @@ mod tests {
         assert_eq!(resolve(Some("/srv/my page.html".into()), &dir), "file:///srv/my%20page.html");
         assert_eq!(resolve(Some("  ".into()), &dir), "https://example.com");
         assert!(!dir.join("tetron-browser/bookmarks.html").exists());
+
+        assert_eq!(bookmarks_file_in(&dir), Some(wm.join("bookmarks.html")));
+        fs::remove_file(wm.join("bookmarks.html")).unwrap();
+        assert_eq!(bookmarks_file_in(&dir), Some(dir.join("tetron-browser/bookmarks.html")));
     }
 }

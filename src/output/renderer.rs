@@ -181,7 +181,9 @@ impl Renderer {
         }
     }
 
-    pub fn set_title(&self, title: &str) -> io::Result<()> {
+    pub fn set_title(&mut self, title: &str) -> io::Result<()> {
+        self.nav.set_title(title);
+
         let mut stdout = io::stdout();
 
         write!(stdout, "\x1b]0;{title}\x07")?;
