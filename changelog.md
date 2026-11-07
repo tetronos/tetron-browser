@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - A home button `[⌂]` in the navigation bar, after reload
 - A bookmark button `[☆]`: adds the page with its title to the "Links" folder of the bookmarks file (tetron-wm's when present, so both share one list); `[★]` shows a bookmarked page and removes it on a second click
 - Zoom buttons `[−][100%][+]`: 50% to 300% in steps, the percentage resets to 100%. The zoom is a style on the page, so a new page starts at 100%
+- Sideways scrolling with the mouse: a tilting wheel or sideways touchpad swipe, and Shift+wheel. Before, sideways wheel events and Shift+wheel scrolled up or down
 
 ## [0.15.1] - 2026-11-06
 

@@ -32,6 +32,8 @@ pub enum Event {
     MouseDown { row: usize, col: usize },
     MouseMove { row: usize, col: usize },
     Scroll { delta: isize },
+    /// Sideways wheel or Shift+wheel, in notches: positive is right.
+    ScrollX { delta: isize },
     Terminal(TerminalEvent),
     Exit,
 }

@@ -55,10 +55,8 @@ impl Mouse {
         };
 
         Some({
-            if Mask::ScrollDown & btn {
-                Event::Scroll { delta: -1 }
-            } else if Mask::ScrollUp & btn {
-                Event::Scroll { delta: 1 }
+            if let Some(event) = wheel(btn) {
+                event
             } else {
                 let col = col as usize - 1;
                 let row = row as usize - 1;
@@ -75,10 +73,28 @@ impl Mouse {
     }
 }
 
+/// A wheel event from an SGR mouse button code: bit 0x40 marks the wheel,
+/// the low two bits say up, down, left or right, and 0x04 is Shift (Shift
+/// turns up/down into left/right, as in most programs). Motion (0x20) and
+/// other modifier bits are ignored.
+fn wheel(btn: u32) -> Option<Event> {
+    if btn & 0x40 == 0 || btn & 0x80 != 0 {
+        return None;
+    }
+
+    let shift = btn & 0x04 != 0;
+
+    Some(match (btn & 0x03, shift) {
+        (0, false) => Event::Scroll { delta: 1 },
+        (1, false) => Event::Scroll { delta: -1 },
+        (0, true) | (2, _) => Event::ScrollX { delta: -1 },
+        (1, true) | (3, _) => Event::ScrollX { delta: 1 },
+        _ => unreachable!(),
+    })
+}
+
 enum Mask {
     MouseMove = 0x20,
-    ScrollUp = 0x40,
-    ScrollDown = 0x41,
 }
 
 impl BitAnd<u32> for Mask {
@@ -88,5 +104,42 @@ impl BitAnd<u32> for Mask {
         let mask = self as u32;
 
         mask & rhs == mask
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::ControlFlow;
+
+    fn event(seq: &str) -> Option<Event> {
+        let mut mouse = Mouse::new();
+
+        for &byte in seq.as_bytes() {
+            if let ControlFlow::Break(event) = mouse.parse(byte) {
+                return event;
+            }
+        }
+
+        None
+    }
+
+    fn delta(seq: &str) -> (isize, isize) {
+        match event(seq) {
+            Some(Event::Scroll { delta }) => (0, delta),
+            Some(Event::ScrollX { delta }) => (delta, 0),
+            other => panic!("{seq}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wheel_directions_and_shift() {
+        assert_eq!(delta("64;5;5M"), (0, 1));
+        assert_eq!(delta("65;5;5M"), (0, -1));
+        assert_eq!(delta("66;5;5M"), (-1, 0));
+        assert_eq!(delta("67;5;5M"), (1, 0));
+        assert_eq!(delta("68;5;5M"), (-1, 0));
+        assert_eq!(delta("69;5;5M"), (1, 0));
+        assert!(matches!(event("0;5;5M"), Some(Event::MouseDown { col: 4, row: 4 })));
     }
 }

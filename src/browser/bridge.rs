@@ -403,6 +403,15 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
 
                             emit!(scroll((delta as f32 * scale.height) as c_int))
                         }
+                        ScrollX { delta } => {
+                            // Chromium's scroll call is vertical only; scroll
+                            // sideways from inside the page, 6 columns a notch.
+                            let px = (delta as f32 * 6.0 * get_scale().width).round();
+                            let script = format!("javascript:void(window.scrollBy({px},0))");
+                            let c_str = CString::new(script).unwrap();
+
+                            emit!(go_to(c_str.as_ptr()))
+                        }
                         KeyPress { key } => {
                             if dispatch(renderer.keypress(&key).unwrap()) {
                                 emit!(key_press(key.char as c_char))

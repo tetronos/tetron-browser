@@ -19,6 +19,8 @@ Navigation bar:
     [☆] bookmark this page (adds it to the folder "Links"; [★] click again to remove)
     [−][100%][+] zoom out, reset, in (a new page starts at 100%)
     Click the address to edit it, Enter to go.
+    Sideways: tilt the wheel or swipe sideways, Shift+wheel, the arrow keys, or click
+    the bar at the bottom of a wide page (dragging its handle does not work yet).
 
 Home page:
     With no url it opens the home page; the [⌂] button in the bar goes there.

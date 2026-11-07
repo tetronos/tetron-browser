@@ -17,18 +17,24 @@ where
         let size = stdin.read(&mut buf)?;
         let read = parser.parse(&buf[0..size]);
         let mut scroll = 0;
+        let mut scroll_x = 0;
         let mut events = Vec::with_capacity(read.len());
 
         for event in read {
             match event {
                 Event::Exit => return Ok(()),
                 Event::Scroll { delta } => scroll += delta,
+                Event::ScrollX { delta } => scroll_x += delta,
                 event => events.push(event),
             }
         }
 
         if scroll != 0 {
             events.push(Event::Scroll { delta: scroll })
+        }
+
+        if scroll_x != 0 {
+            events.push(Event::ScrollX { delta: scroll_x })
         }
 
         callback(events)
