@@ -19,11 +19,23 @@ fn href(url: &str) -> String {
     format!("HREF=\"{}\"", escape(url))
 }
 
-/// True when the file has a bookmark for exactly this URL.
-pub fn contains(text: &str, url: &str) -> bool {
-    let needle = href(url).to_lowercase();
+/// The forms of a URL that count as the same bookmark: with and without a
+/// trailing `/` (Chromium shows `https://a.org` as `https://a.org/`).
+fn needles(url: &str) -> [String; 2] {
+    let bare = url.strip_suffix('/').unwrap_or(url);
 
-    text.lines().any(|line| line.to_lowercase().contains(&needle))
+    [href(bare).to_lowercase(), href(&format!("{bare}/")).to_lowercase()]
+}
+
+fn has_url(line: &str, url: &str) -> bool {
+    let line = line.to_lowercase();
+
+    needles(url).iter().any(|needle| line.contains(needle.as_str()))
+}
+
+/// True when the file has a bookmark for this URL (see `needles`).
+pub fn contains(text: &str, url: &str) -> bool {
+    text.lines().any(|line| has_url(line, url))
 }
 
 /// The file with a bookmark for `url` added at the top of `folder`, which is
@@ -70,10 +82,8 @@ pub fn add(text: &str, title: &str, url: &str, folder: &str, now: i64) -> String
 
 /// The file without bookmark lines for `url`.
 pub fn remove(text: &str, url: &str) -> String {
-    let needle = href(url).to_lowercase();
-
     text.lines()
-        .filter(|line| !(line.to_lowercase().contains(&needle) && line.to_uppercase().contains("<A ")))
+        .filter(|line| !(has_url(line, url) && line.to_uppercase().contains("<A ")))
         .collect::<Vec<_>>()
         .join("\n")
         + "\n"
@@ -117,6 +127,9 @@ mod tests {
         );
         assert!(contains(&text, "https://example.com/?a=1&b=2"));
         assert!(!contains(&text, "https://example.com/"));
+        assert!(contains(DEFAULT_BOOKMARKS, "https://en.wikipedia.org/"));
+        assert!(contains(DEFAULT_BOOKMARKS, "https://tetronos.github.io/tetron-wm"));
+        assert!(!contains(DEFAULT_BOOKMARKS, "https://en.wikipedia.org/wiki"));
         assert_eq!(add(&text, "Again", "https://example.com/?a=1&b=2", "News", 8), text);
     }
 
@@ -130,7 +143,7 @@ mod tests {
         assert_eq!(lines.last().unwrap().trim(), "</DL><p>");
         assert_eq!(lines[lines.len() - 2].trim(), "</DL><p>");
 
-        let back = remove(&text, "https://x.org");
+        let back = remove(&text, "https://x.org/");
         assert!(!contains(&back, "https://x.org"));
         assert!(contains(&back, "https://en.wikipedia.org"));
     }
