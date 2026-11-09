@@ -395,16 +395,23 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                 let get_scale = || bridge.lock().unwrap().window.scale;
                 // Page pixels of a terminal cell, below the UI rows.
                 let ui_rows = renderer.ui_rows() as f32;
-                let scale = |col, row| {
+                // A cell showing page text maps to where Chromium painted that
+                // text (`Renderer::click_y`: page device pixels, 4 to a cell row, the
+                // UI rows not included).
+                let scale = |col, row, text_y: Option<i32>| {
                     let scale = get_scale();
+                    let y = match text_y {
+                        Some(y) => y as f32 / 4.0,
+                        None => row as f32 - ui_rows + 0.5,
+                    };
 
                     scale
-                        .mul(((col as f32 + 0.5), (row as f32 - ui_rows + 0.5)))
+                        .mul(((col as f32 + 0.5), y))
                         .floor()
                         .cast()
                         .into()
                 };
-                let dispatch = |action| {
+                let dispatch = |action, text_y: Option<i32>| {
                     match action {
                         NavigationAction::Ignore => (),
                         NavigationAction::Forward => return true,
@@ -414,7 +421,7 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                         NavigationAction::GoTo(url) => go_to(url),
                         NavigationAction::Run(urls) => urls.into_iter().for_each(go_to),
                         NavigationAction::OpenLinkAt(cell) => {
-                            let (x, y): (u32, u32) = scale(cell.x as usize, cell.y as usize);
+                            let (x, y): (u32, u32) = scale(cell.x as usize, cell.y as usize, text_y);
 
                             log::debug!("open link at cell {cell:?} = px {x},{y}");
                             go_to(crate::ui::navigation::open_link_script(x as i32, y as i32))
@@ -442,27 +449,30 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                             go_to(format!("javascript:void(window.scrollBy({px},0))"))
                         }
                         KeyPress { key } => {
-                            if dispatch(renderer.keypress(&key).unwrap()) {
+                            if dispatch(renderer.keypress(&key).unwrap(), None) {
                                 emit!(key_press(key.char as c_char))
                             }
                         }
                         MouseUp { col, row, button } => {
-                            if dispatch(renderer.mouse_up((col as _, row as _).into(), button).unwrap()) {
-                                let (width, height) = scale(col, row);
+                            let text_y = renderer.click_y(col, row);
+                            if dispatch(renderer.mouse_up((col as _, row as _).into(), button).unwrap(), text_y) {
+                                let (width, height) = scale(col, row, text_y);
 
                                 emit!(mouse_up(width, height))
                             }
                         }
                         MouseDown { col, row, button } => {
-                            if dispatch(renderer.mouse_down((col as _, row as _).into(), button).unwrap()) {
-                                let (width, height) = scale(col, row);
+                            let text_y = renderer.click_y(col, row);
+                            if dispatch(renderer.mouse_down((col as _, row as _).into(), button).unwrap(), text_y) {
+                                let (width, height) = scale(col, row, text_y);
 
                                 emit!(mouse_down(width, height))
                             }
                         }
                         MouseMove { col, row } => {
-                            if dispatch(renderer.mouse_move((col as _, row as _).into()).unwrap()) {
-                                let (width, height) = scale(col, row);
+                            let text_y = renderer.click_y(col, row);
+                            if dispatch(renderer.mouse_move((col as _, row as _).into()).unwrap(), text_y) {
+                                let (width, height) = scale(col, row, text_y);
 
                                 emit!(mouse_move(width, height))
                             }

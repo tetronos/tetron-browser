@@ -22,6 +22,11 @@ pub struct Renderer {
     /// The page in cells; the buffer also has `ui_rows` rows above it.
     size: Size,
     ui_rows: u32,
+    /// Per cell of `cells`: the device pixel row of the baseline of the page
+    /// text drawn there. Text is squeezed into one terminal row, so its row
+    /// drifts from Chromium's own layout (more so when zoomed); a click on
+    /// drawn text goes to where Chromium painted it (see `click_y`).
+    text_y: Vec<Option<i32>>,
 }
 
 impl Renderer {
@@ -32,6 +37,7 @@ impl Renderer {
             painter: Painter::new(),
             size: Size::new(0, 0),
             ui_rows: 1,
+            text_y: Vec::new(),
         }
     }
 
@@ -103,6 +109,8 @@ impl Renderer {
         let bound = size.width - 1;
         let cells = (size.width * ui_rows + size.width * size.height) as usize;
 
+        self.text_y.clear();
+        self.text_y.resize(cells, None);
         self.cells.clear();
         self.cells.resize_with(cells, || {
             let cell = (Cell::new(x, y), Cell::new(x, y));
@@ -209,6 +217,16 @@ impl Renderer {
         for (_, cell) in self.cells.iter_mut() {
             cell.grapheme = None
         }
+        self.text_y.fill(None);
+    }
+
+    /// The device pixel row a click on terminal cell (`col`, `row`) should
+    /// reach when page text is drawn there: just above that text's baseline,
+    /// inside its glyph box, so a click on a link's text hits the link at any
+    /// zoom. `None` for a cell without page text (map it geometrically).
+    pub fn click_y(&self, col: usize, row: usize) -> Option<i32> {
+        let index = row * self.size.width as usize + col;
+        self.text_y.get(index).copied().flatten().map(|y| y - 1)
     }
 
     pub fn set_title(&mut self, title: &str) -> io::Result<()> {
@@ -325,7 +343,9 @@ impl Renderer {
             // Page text sits below the UI rows, like the page background (it
             // used to sit one row too high, above the place clicks reach).
             let index = origin.x / 2 + ((origin.y + 1) / 4 + self.ui_rows as i32) * (viewport.width as i32);
-            let mut iter = self.cells[len.min(index as usize)..].iter_mut();
+            let start = len.min(index.max(0) as usize);
+            let mut at = start;
+            let mut iter = self.cells[start..].iter_mut();
 
             // Get every Unicode grapheme in the input string
             for grapheme in UnicodeSegmentation::graphemes(string, true) {
@@ -338,6 +358,10 @@ impl Renderer {
                         None => return,
                         // Set the cell to the current grapheme
                         Some((_, cell)) => {
+                            if let Some(y) = self.text_y.get_mut(at) {
+                                *y = Some(origin.y);
+                            }
+                            at += 1;
                             let next = Grapheme {
                                 // Create a new shared reference to the text
                                 color,
@@ -392,6 +416,23 @@ mod tests {
         let red_cells: Vec<usize> = r.cells.iter().enumerate()
             .filter(|(_, (_, c))| c.quadrant.0 == red).map(|(i, _)| i).collect();
         assert_eq!(red_cells, vec![12, 13, 14, 22, 23, 24]);
+    }
+
+    /// A click on a cell of drawn page text goes just above that text's
+    /// baseline (its painted place), not to the cell's geometric middle.
+    #[test]
+    fn drawn_text_cells_remember_where_the_text_was_painted() {
+        let mut r = Renderer::new();
+        r.set_layout(Size::new(20, 10), 1);
+        // Baseline at device row 9: drawn on page row (9 + 1) / 4 = 2, terminal row 3.
+        r.draw_text("Hi", Point::new(4, 9), Size::new(0, 0), Color::new(1, 2, 3));
+        assert_eq!(r.click_y(2, 3), Some(8));
+        assert_eq!(r.click_y(3, 3), Some(8));
+        assert_eq!(r.click_y(4, 3), None, "past the text");
+        assert_eq!(r.click_y(2, 2), None, "the row above");
+        assert_eq!(r.click_y(500, 500), None, "outside the buffer");
+        r.clear_text();
+        assert_eq!(r.click_y(2, 3), None, "cleared with the text");
     }
 
     #[test]

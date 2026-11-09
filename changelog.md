@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Bug Fixes
+
+- A click on a link's text opens the link at every zoom level: page text is squeezed into one terminal row, which drifts from where Chromium laid it out (more so when zoomed), so the click had to go a row or more above the link. A click on a cell that shows page text now goes to where Chromium painted that text; cells without text map as before
+
 ## [0.15.3] - 2026-11-07
 
 ### Changes
