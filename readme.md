@@ -27,7 +27,7 @@ sudo curl -fsSLo /etc/apt/sources.list.d/tetronos.sources https://tetronos.githu
 sudo apt update && sudo apt install tetron-browser
 ```
 
-TetronOS ships it, and the [tetron-wm suite installer](https://tetronos.github.io/tetron-wm/) adds it with its essentials collection.
+**On TetronOS it is already there:** tetron-browser is the web browser of [TetronOS](https://github.com/tetronos/tetron-os). Every TetronOS desktop installs it (the `tetronos-desktop` package depends on it), and the [tetron-wm](https://tetronos.github.io/tetron-wm/) desktop opens web pages in it. On other systems, the [tetron-wm suite installer](https://tetronos.github.io/tetron-wm/) adds it with its essentials collection.
 
 Other ways, from the [latest release](https://github.com/tetronos/tetron-browser/releases/latest):
 

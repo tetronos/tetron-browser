@@ -195,7 +195,8 @@ Shift+wheel     scroll sideways</pre></div>
 <section id="install"><div class="wrap">
   <p class="eyebrow">Install</p>
   <h2>Three ways in.</h2>
-  <p class="lede">TetronOS ships it, and the <a href="https://tetronos.github.io/tetron-wm/">tetron-wm</a> suite installer adds it with its essentials collection. Otherwise, on Linux amd64:</p>
+  <div class="warnbox" style="border-color:var(--accent)"><b style="color:var(--accent)">Already on TetronOS.</b> tetron-browser is the web browser of <a href="https://github.com/tetronos/tetron-os">TetronOS</a>: every TetronOS desktop installs it (the <code>tetronos-desktop</code> package depends on it), and the <a href="https://tetronos.github.io/tetron-wm/">tetron-wm</a> desktop opens web pages in it. Nothing to do there.</div>
+  <p class="lede" style="margin-top:1.6rem">On another system, the tetron-wm suite installer adds it with its essentials collection, or install it yourself on Linux amd64:</p>
   <div class="grid">
     <div class="win"><div class="bar"><i></i><i></i><i></i>apt repository</div><div class="body"><h3>Debian and Ubuntu</h3><p>The commands at the <a href="#top">top</a>. <code>apt upgrade</code> keeps it current. Details: <a href="https://tetronos.github.io/apt/">tetronos apt</a>.</p></div></div>
     <div class="win"><div class="bar"><i></i><i></i><i></i>.deb</div><div class="body"><h3>One release file</h3><p>Download <code>tetron-browser_&lt;version&gt;-1_amd64.deb</code> from the <a href="https://github.com/tetronos/tetron-browser/releases/latest">latest release</a>, check its <code>.sha256</code>, then <code>sudo apt install ./tetron-browser_*.deb</code>.</p></div></div>
