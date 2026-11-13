@@ -10,7 +10,7 @@ The command is `tetron-browser`, or `twww` for short. Like every tetron add-on, 
 - Tabs without the memory cost: right-click a link to open it in a background tab; one page is live at a time and switching reloads it at its scroll position. Tabs reopen on the next start.
 - Clicks land on the text you see (page text was drawn one row above where clicks reached). The page is an ordinary Netscape bookmarks file you can edit or import elsewhere; `tetron-browser --help` lists where it is looked for.
 
-Releases ship the Carbonyl v0.0.3 Chromium runtime with the rebuilt `libcarbonyl.so`, built on Debian 12 (glibc 2.34 or newer is enough). Debian and TetronOS users get it as the `tetron-browser` package.
+Releases ship the Carbonyl v0.0.3 Chromium runtime (fetched from our unmodified mirror, release [`runtime-v0.0.3-upstream`](https://github.com/tetronos/tetron-browser/releases/tag/runtime-v0.0.3-upstream), SHA256-pinned) with the rebuilt `libcarbonyl.so`, built on Debian 12 (glibc 2.34 or newer is enough). Debian and TetronOS users get it as the `tetron-browser` package.
 
 The original Carbonyl README follows; its commands say `carbonyl`.
 

@@ -3,7 +3,8 @@ Upstream-Name: tetron-browser (continuation of Carbonyl by Fathy Boundjadj)
 Source: https://github.com/tetronos/tetron-browser/releases
 Comment: Releases ship the Carbonyl v0.0.3 Chromium runtime
  (https://github.com/fathyb/carbonyl) with libcarbonyl.so rebuilt from the
- tetron-browser source. The bundled Chromium components carry their own
+ tetron-browser source. The runtime zip is fetched from an unmodified mirror
+ of the upstream v0.0.3 release, tetron-browser release runtime-v0.0.3-upstream. The bundled Chromium components carry their own
  licenses, listed upstream.
 
 Files: *

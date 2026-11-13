@@ -10,7 +10,9 @@ OUT=$1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)
 RUST_IMAGE=rust:1.85.1-bookworm
-UPSTREAM_URL=https://github.com/fathyb/carbonyl/releases/download/v0.0.3/carbonyl.linux-amd64.zip
+# Unmodified mirror of fathyb/carbonyl v0.0.3 carbonyl.linux-amd64.zip, so a
+# release does not depend on upstream hosting; the SHA256 pin still applies.
+UPSTREAM_URL=https://github.com/tetronos/tetron-browser/releases/download/runtime-v0.0.3-upstream/carbonyl.linux-amd64.zip
 UPSTREAM_SHA=46a902ea29bb32f773fb4ee341423705b92345a810422b8df93eaea6a1ec7ad2
 WORK="$ROOT/DO-NOT-COMMIT/release-work"
 mkdir -p "$OUT" "$WORK"

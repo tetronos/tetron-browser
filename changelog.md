@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Build
+
+- Release builds fetch the Chromium runtime (Carbonyl v0.0.3) from an unmodified mirror in this repository, release `runtime-v0.0.3-upstream`, instead of the upstream project; the SHA256 pin is unchanged
+
 ## [0.15.4] - 2026-11-09
 
 ### Bug Fixes
