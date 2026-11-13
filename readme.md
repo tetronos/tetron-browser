@@ -7,7 +7,7 @@ The command is `tetron-browser`, or `twww` for short. Like every tetron add-on, 
 - Resizing a window no longer crashes the browser (a resize ran on the wrong thread from a signal handler, and very small windows overflowed the cell buffer).
 - The render thread exits instead of spinning when its channel closes, and a dead render thread no longer takes the browser down.
 - It opens a bookmarks page with a search box instead of a blank page, and the navigation bar has buttons for home `[⌂]`, bookmark `[☆]` and zoom `[−][100%][+]`.
-- Right-click menu on links and images: open in a new tab, copy the address (terminal clipboard, OSC 52), save the file to `~/Downloads`.
+- Right-click menu on links and images: open in a new tab, copy the address (terminal clipboard, OSC 52), save the file to `~/Downloads`, open it in the default app (`xdg-open`; also a left click on `magnet:` links).
 - Tabs without the memory cost: middle-click a link (or use the right-click menu) to open it in a background tab; one page is live at a time and switching reloads it at its scroll position. Tabs reopen on the next start.
 - Clicks land on the text you see (page text was drawn one row above where clicks reached). The page is an ordinary Netscape bookmarks file you can edit or import elsewhere; `tetron-browser --help` lists where it is looked for.
 

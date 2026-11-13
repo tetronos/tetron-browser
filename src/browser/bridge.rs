@@ -227,8 +227,10 @@ pub extern "C" fn carbonyl_renderer_push_nav(
             go_to(script)
         }
 
+        go_to(crate::ui::navigation::external_links_script());
+
         // The first page loads the saved tabs: titles missing there.
-        fetch_titles(shared, renderer.take_title_fetches());
+        run_jobs(shared, renderer.take_jobs());
     });
 }
 
@@ -239,7 +241,7 @@ pub extern "C" fn carbonyl_renderer_set_title(bridge: RendererPtr, title: *const
 
     shared.lock().unwrap().renderer.render(move |renderer| {
         renderer.set_title(title.to_str().unwrap()).unwrap();
-        fetch_titles(shared, renderer.take_title_fetches());
+        run_jobs(shared, renderer.take_jobs());
     });
 }
 
@@ -337,14 +339,26 @@ fn go_to(url: String) {
     unsafe { post_task(delegate.post_task, move || (delegate.go_to)(url.as_ptr())) }
 }
 
-/// Fetches the titles of background tabs, each in its own thread, and hands
-/// them to the renderer (see `page_title`).
-fn fetch_titles(bridge: &'static Mutex<RendererBridge>, fetches: Vec<(u64, String)>) {
-    for (id, url) in fetches {
-        thread::spawn(move || {
-            if let Some(title) = crate::page_title::fetch(&url) {
-                log::debug!("background tab {id} title: {title}");
-                bridge.lock().unwrap().renderer.render(move |r| r.set_fetched_title(id, &url, &title));
+/// Starts the renderer's slow work, each job in its own thread; results go
+/// back to the renderer (see `navigation::Job`).
+fn run_jobs(bridge: &'static Mutex<RendererBridge>, jobs: Vec<crate::ui::navigation::Job>) {
+    use crate::ui::navigation::Job;
+
+    for job in jobs {
+        thread::spawn(move || match job {
+            Job::FetchTitle { id, url } => {
+                if let Some(title) = crate::page_title::fetch(&url) {
+                    log::debug!("background tab {id} title: {title}");
+                    bridge.lock().unwrap().renderer.render(move |r| r.set_fetched_title(id, &url, &title));
+                }
+            }
+            Job::OpenInApp { url, referer } => {
+                let status = match crate::download::open_in_app(&url, referer.as_deref(), &crate::download::dir()) {
+                    Ok(status) | Err(status) => status,
+                };
+
+                log::debug!("open in app {url}: {status}");
+                bridge.lock().unwrap().renderer.render(move |r| r.set_status(Some(status.clone())));
             }
         });
     }
@@ -469,7 +483,7 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                 };
 
                 // Tabs opened from the menu, or restored without a title.
-                let fetch_after = |renderer: &mut crate::output::Renderer| fetch_titles(bridge, renderer.take_title_fetches());
+                let fetch_after = |renderer: &mut crate::output::Renderer| run_jobs(bridge, renderer.take_jobs());
 
                 for event in std::mem::take(&mut events) {
                     use Event::*;

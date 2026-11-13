@@ -71,9 +71,9 @@ impl Renderer {
         Ok(NavigationAction::Ignore)
     }
 
-    /// Background tabs whose title is to be fetched, as (id, url).
-    pub fn take_title_fetches(&mut self) -> Vec<(u64, String)> {
-        self.nav.take_title_fetches()
+    /// Work to start in threads (see `navigation::Job`).
+    pub fn take_jobs(&mut self) -> Vec<crate::ui::navigation::Job> {
+        self.nav.take_jobs()
     }
 
     pub fn set_fetched_title(&mut self, id: u64, url: &str, title: &str) {

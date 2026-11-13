@@ -80,6 +80,56 @@ pub fn save(url: &str, referer: Option<&str>, image: bool, dir: &Path) -> Result
     Ok(path)
 }
 
+/// Schemes the browser shows itself; other links (`magnet:`, `mailto:`)
+/// belong to another app.
+const WEB_SCHEMES: [&str; 7] = ["http", "https", "file", "javascript", "data", "blob", "about"];
+
+fn scheme(url: &str) -> String {
+    url.split_once(':').map_or(String::new(), |(s, _)| s.to_ascii_lowercase())
+}
+
+/// A link for another app (`magnet:`, `mailto:`, ...): the browser can not show it.
+pub fn is_external(url: &str) -> bool {
+    let scheme = scheme(url);
+
+    !scheme.is_empty() && !WEB_SCHEMES.contains(&scheme.as_str())
+}
+
+/// Whether "Open in default app" applies: links for another app, and links
+/// to files (not web pages) over http, https or `file:`.
+pub fn opens_in_app(url: &str) -> bool {
+    match scheme(url).as_str() {
+        "http" | "https" | "file" => url_name(url).is_some_and(|name| !is_page_name(&name)),
+        _ => is_external(url),
+    }
+}
+
+/// Hands `url` to the default app with `xdg-open`: a link for another app
+/// as it is, a `file:` link as its path, an http(s) file after saving it
+/// into `dir`. Returns a status line either way.
+pub fn open_in_app(url: &str, referer: Option<&str>, dir: &Path) -> Result<String, String> {
+    let target = match scheme(url).as_str() {
+        "file" => percent_decode(url.trim_start_matches("file://").split(['?', '#']).next().unwrap_or("")),
+        "http" | "https" => save(url, referer, false, dir)?.display().to_string(),
+        _ if is_external(url) => url.to_owned(),
+        _ => return Err(format!("can not open {url} in another app")),
+    };
+    let status = Command::new("xdg-open")
+        .arg(&target)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|_| "Open in default app needs xdg-open".to_owned())?;
+
+    if status.success() {
+        Ok(format!("opened {target}"))
+    } else {
+        log::warning!("xdg-open {target}: {status}");
+        Err(format!("no default app opened {target} (xdg-open: {status})"))
+    }
+}
+
 /// Fetches into `out`; returns the response headers of every hop.
 fn fetch(url: &str, referer: Option<&str>, out: &Path) -> Result<String, String> {
     let referer = referer.filter(|r| r.starts_with("http"));
@@ -301,6 +351,18 @@ mod tests {
         assert_eq!(with_extension("a.png", "image/jpeg"), "a.png");
         assert_eq!(with_extension("blob", "application/octet-stream"), "blob");
         assert!(is_page_name("index") && is_page_name("x.PHP") && !is_page_name("r.pdf"));
+    }
+
+    #[test]
+    fn default_app_applies_to_files_and_other_schemes_not_pages() {
+        for url in ["magnet:?xt=urn:btih:abc", "mailto:a@b.org", "https://a.org/d.torrent", "file:///home/u/x.pdf", "HTTPS://a.org/r.ZIP"] {
+            assert!(opens_in_app(url), "{url}");
+        }
+        for url in ["https://a.org/", "https://a.org/news", "https://a.org/i.html?x=1.pdf", "javascript:void(0)", "data:text/plain,x", "about:blank"] {
+            assert!(!opens_in_app(url), "{url}");
+        }
+        assert!(is_external("magnet:?x") && !is_external("https://a.org/x.torrent") && !is_external("relative/x"));
+        assert!(open_in_app("javascript:alert(1)", None, Path::new("/nonexistent")).is_err());
     }
 
     #[test]

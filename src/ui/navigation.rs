@@ -149,8 +149,32 @@ pub struct Navigation {
     swallow_up: bool,
     /// A short message shown in place of the URL ("copied", "saved to ...").
     status: Option<String>,
-    /// Background tabs whose title is to be fetched, as (id, url).
-    title_fetches: Vec<(u64, String)>,
+    /// Work for the bridge to do off the render thread (see `Job`).
+    jobs: Vec<Job>,
+}
+
+/// Slow work the browser does in a thread, outside the render thread.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Job {
+    /// Fetch the title of background tab `id` showing `url`.
+    FetchTitle { id: u64, url: String },
+    /// Hand `url` to the desktop's default app (`download::open_in_app`).
+    OpenInApp { url: String, referer: Option<String> },
+}
+
+/// Script that sends a left click on a link the browser can not show
+/// (`magnet:`, `mailto:` and other non-web schemes) to the default app: the
+/// message `external <url>`. Run on every page; installs itself once.
+/// No `%` or `#` (see `probe_script`).
+pub fn external_links_script() -> String {
+    "javascript:void(window.tetronExternal||(window.tetronExternal=1,\
+     document.addEventListener('click',function(e){\
+     var a=e.target&&e.target.closest&&e.target.closest('a[href]');\
+     if(!a||e.button||['http:','https:','file:','javascript:','data:','blob:','about:'].indexOf(a.protocol)>=0)return;\
+     e.preventDefault();var t=document.title;\
+     document.title='tetron-browser-message:external '+encodeURIComponent(a.href);\
+     setTimeout(function(){document.title=t},100)},true)))"
+        .to_owned()
 }
 
 /// A short name for a tab without a title: the host and the last part of
@@ -190,7 +214,7 @@ impl Navigation {
             menu_at: None,
             swallow_up: false,
             status: None,
-            title_fetches: Vec::new(),
+            jobs: Vec::new(),
         }
     }
 
@@ -198,13 +222,18 @@ impl Navigation {
     fn open_background(&mut self, url: &str) {
         let id = self.tabs().open_background(url);
 
-        self.title_fetches.push((id, url.to_owned()));
+        self.jobs.push(Job::FetchTitle { id, url: url.to_owned() });
     }
 
-    /// The titles to fetch now, as (id, url); see `set_fetched_title`.
-    pub fn take_title_fetches(&mut self) -> Vec<(u64, String)> {
+    /// The work to start now (see `Job`).
+    pub fn take_jobs(&mut self) -> Vec<Job> {
         self.tabs();
-        std::mem::take(&mut self.title_fetches)
+        std::mem::take(&mut self.jobs)
+    }
+
+    fn open_in_app(&mut self, url: String) {
+        self.status = Some(format!("opening {url}"));
+        self.jobs.push(Job::OpenInApp { url, referer: self.url.clone() });
     }
 
     pub fn set_fetched_title(&mut self, id: u64, url: &str, title: &str) {
@@ -225,6 +254,10 @@ impl Navigation {
         match entry {
             Entry::OpenInNewTab(url) => {
                 self.open_background(&url);
+                NavigationAction::Ignore
+            }
+            Entry::OpenInApp(url) => {
+                self.open_in_app(url);
                 NavigationAction::Ignore
             }
             Entry::CopyLink(url) | Entry::CopyImage(url) => NavigationAction::Copy(url),
@@ -536,7 +569,8 @@ impl Navigation {
             }
 
             // Tabs saved without a title get one too.
-            self.title_fetches.extend(tabs.untitled_background());
+            let untitled = tabs.untitled_background();
+            self.jobs.extend(untitled.into_iter().map(|(id, url)| Job::FetchTitle { id, url }));
             self.tabs = Some(tabs);
         }
 
@@ -621,6 +655,12 @@ impl Navigation {
         if let Some(message) = title.strip_prefix(TITLE_MESSAGE) {
             if let Some(url) = message.strip_prefix("open ") {
                 self.open_background(url.trim());
+            } else if let Some(url) = message.strip_prefix("external ") {
+                let url = super::menu::percent_decode(url.trim());
+
+                if !url.is_empty() {
+                    self.open_in_app(url);
+                }
             } else if let Some(body) = message.strip_prefix("probe ") {
                 let entries = Probe::parse(body).entries();
 
@@ -977,7 +1017,7 @@ mod tests {
     fn context_menu_opens_on_the_probe_answer_and_runs_entries() {
         let mut nav = nav();
         nav.set_size(Size::new(80, 23), 1);
-        let probe = "tetron-browser-message:probe https%3A%2F%2Fd.org%2Ff.pdf https%3A%2F%2Fd.org%2Fi.png";
+        let probe = "tetron-browser-message:probe https%3A%2F%2Fd.org%2Ff https%3A%2F%2Fd.org%2Fi.png";
 
         assert!(!nav.set_title(probe), "no right-click waiting: no menu");
         assert!(nav.render_overlay().is_empty());
@@ -998,7 +1038,7 @@ mod tests {
         assert_eq!(nav.menu.as_ref().unwrap().hover(), Some(1));
 
         // Click on "Copy link address": copies, and the mouse up is swallowed.
-        assert!(matches!(nav.mouse_down((12, 7).into(), 0), NavigationAction::Copy(u) if u == "https://d.org/f.pdf"));
+        assert!(matches!(nav.mouse_down((12, 7).into(), 0), NavigationAction::Copy(u) if u == "https://d.org/f"));
         assert!(matches!(nav.mouse_up((12, 7).into(), 0), NavigationAction::Ignore));
         assert!(matches!(nav.mouse_up((12, 7).into(), 0), NavigationAction::Forward));
         assert!(nav.render_overlay().is_empty());
@@ -1011,12 +1051,12 @@ mod tests {
         }
         match nav.keypress(&0x0d.into()) {
             NavigationAction::Save { url, referer, image: false } => {
-                assert_eq!(url, "https://d.org/f.pdf");
+                assert_eq!(url, "https://d.org/f");
                 assert_eq!(referer.as_deref(), Some("https://example.com"));
             }
             _ => panic!("Return on Save link"),
         }
-        assert!(bar(&nav, 120).contains("saving https://d.org/f.pdf"), "status in place of the URL");
+        assert!(bar(&nav, 120).contains("saving https://d.org/f"), "status in place of the URL");
 
         // Open in new tab; a click outside only closes.
         nav.mouse_down((10, 5).into(), 2);
@@ -1027,7 +1067,7 @@ mod tests {
         nav.mouse_down((10, 5).into(), 2);
         nav.set_title(probe);
         nav.mouse_down((10, 6).into(), 0);
-        assert_eq!(nav.tabs().list().last().unwrap().url, "https://d.org/f.pdf");
+        assert_eq!(nav.tabs().list().last().unwrap().url, "https://d.org/f");
     }
 
     /// A background tab asks for its title and shows a short URL until then;
@@ -1036,13 +1076,13 @@ mod tests {
     fn background_tabs_fetch_titles_and_show_short_urls_meanwhile() {
         let mut nav = nav();
         nav.set_size(Size::new(120, 23), 2);
-        assert!(nav.take_title_fetches().is_empty());
+        assert!(nav.take_jobs().is_empty());
 
         nav.set_title("tetron-browser-message:open https://www.w3.org/Icons/w3c_home.png");
-        let fetches = nav.take_title_fetches();
-        assert_eq!(fetches.len(), 1);
-        assert!(nav.take_title_fetches().is_empty(), "taken once");
-        let (id, url) = fetches[0].clone();
+        let jobs = nav.take_jobs();
+        assert!(nav.take_jobs().is_empty(), "taken once");
+        let [Job::FetchTitle { id, url }] = &jobs[..] else { panic!("{jobs:?}") };
+        let (id, url) = (*id, url.clone());
         let strip = |nav: &Navigation| nav.render(Size::new(120, 23)).iter().filter(|(p, _)| p.y == 1).map(|(_, e)| e.text.clone()).collect::<String>();
         assert!(strip(&nav).contains("w3.org/w3c_home.png"), "{}", strip(&nav));
 
@@ -1052,6 +1092,22 @@ mod tests {
         assert!(strip(&nav).contains("W3C logo"), "an existing title stays");
         nav.set_fetched_title(id, "https://other.org/", "Wrong page");
         assert!(!strip(&nav).contains("Wrong page"));
+    }
+
+    /// A left click on a magnet link (reported by `external_links_script`)
+    /// goes to the default app.
+    #[test]
+    fn external_link_messages_open_in_the_default_app() {
+        let mut nav = nav();
+        nav.take_jobs();
+        assert!(!nav.set_title("tetron-browser-message:external magnet%3A%3Fxt%3Durn%3Abtih%3Aabc"));
+        assert_eq!(
+            nav.take_jobs(),
+            [Job::OpenInApp { url: "magnet:?xt=urn:btih:abc".into(), referer: Some("https://example.com".into()) }]
+        );
+        assert!(bar(&nav, 120).contains("opening magnet:?xt=urn:btih:abc"));
+        let script = external_links_script();
+        assert!(!script.contains('%') && !script.contains('#'), "Chromium decodes and cuts javascript: URLs");
     }
 
     #[test]

@@ -22,7 +22,10 @@ Navigation bar:
 
 Right-click menu:
     Right-click a link or an image: Open in new tab, Copy link address, Save link
-    to Downloads, Copy image address, Save image to Downloads. Click an entry, or
+    to Downloads, Copy image address, Save image to Downloads. Links to files and
+    links for other apps (magnet:, mailto:) also get Open in default app: it runs
+    xdg-open on the link, or on the file after saving it (a .torrent, a pdf).
+    A left click on a magnet: or other non-web link does the same. Click an entry, or
     Up/Down and Enter; a click outside or any other key closes it. Copying uses
     the terminal clipboard (OSC 52; tetron-wm keeps it in its clipboard history).
     Saving uses curl (or wget) without the page's cookies: a file behind a login

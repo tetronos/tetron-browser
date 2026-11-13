@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Right-click menu on links and images: Open in new tab, Copy link address, Copy image address (OSC 52 terminal clipboard), Save link and Save image to the download folder (`~/Downloads`, or `TETRON_BROWSER_DOWNLOADS`, or `~/.config/tetron-browser/downloads`). Saving uses curl or wget without the page cookies, so a file behind a login is reported, not saved; `data:` images are written directly; files are never overwritten. The status shows in place of the address. Right-click no longer opens a background tab; middle-click still does
+- Open in default app (xdg-open): a menu entry on links to files and links for other apps, and the left click on a `magnet:`, `mailto:` or other non-web link. A file link is saved to the download folder first and the file is opened (a `.torrent` goes to the torrent client)
 - Background tabs show their page title: only the head of the page is read (curl, or the file for `file:` links), also for saved tabs that have no title. Until then, or for a file without a title, the tab shows a short name (`w3.org/w3c_home.png`) instead of the whole address
 
 ### Build

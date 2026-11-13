@@ -9,6 +9,7 @@ use super::navigation::NavigationElement;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
     OpenInNewTab(String),
+    OpenInApp(String),
     CopyLink(String),
     SaveLink(String),
     CopyImage(String),
@@ -19,6 +20,7 @@ impl Entry {
     fn label(&self) -> &'static str {
         match self {
             Entry::OpenInNewTab(_) => "Open in new tab",
+            Entry::OpenInApp(_) => "Open in default app",
             Entry::CopyLink(_) => "Copy link address",
             Entry::SaveLink(_) => "Save link to Downloads",
             Entry::CopyImage(_) => "Copy image address",
@@ -51,9 +53,16 @@ impl Probe {
         let mut out = Vec::new();
 
         if let Some(link) = &self.link {
-            out.push(Entry::OpenInNewTab(link.clone()));
+            if crate::download::opens_in_app(link) {
+                out.push(Entry::OpenInApp(link.clone()));
+            }
+            if !crate::download::is_external(link) {
+                out.push(Entry::OpenInNewTab(link.clone()));
+            }
             out.push(Entry::CopyLink(link.clone()));
-            out.push(Entry::SaveLink(link.clone()));
+            if !crate::download::is_external(link) {
+                out.push(Entry::SaveLink(link.clone()));
+            }
         }
 
         if let Some(image) = &self.image {
@@ -198,6 +207,9 @@ mod tests {
         assert_eq!(labels(probe(None, Some("i"))), ["Copy image address", "Save image to Downloads"]);
         assert_eq!(labels(probe(Some("l"), Some("i"))).len(), 5, "image inside a link");
         assert!(labels(probe(None, None)).is_empty());
+        assert_eq!(labels(probe(Some("magnet:?xt=urn:btih:abc"), None)), ["Open in default app", "Copy link address"]);
+        assert_eq!(labels(probe(Some("https://a.org/d.torrent"), None)), ["Open in default app", "Open in new tab", "Copy link address", "Save link to Downloads"]);
+        assert_eq!(labels(probe(Some("https://a.org/news/"), None))[0], "Open in new tab", "a page: no default app");
     }
 
     #[test]
