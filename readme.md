@@ -1,233 +1,65 @@
 # tetron-browser
 
-A web browser for the terminal: a maintained continuation of [Carbonyl](https://github.com/fathyb/carbonyl) by Fathy Boundjadj, whose last release (v0.0.3) is from February 2023. It renders pages with Chromium and draws them in the terminal with truecolor blocks, mouse and keyboard. It is the web browser of [TetronOS](https://github.com/tetronos/tetron-os) and the [tetron-wm](https://github.com/tetronos/tetron-wm) terminal desktop. The license (BSD-3-Clause) and the original copyright are unchanged.
+A web browser for the terminal. It renders pages with Chromium and draws them with truecolor blocks, with mouse and keyboard, in any terminal, over SSH, or on a bare console with no window server. It is the web browser of [TetronOS](https://github.com/tetronos/tetron-os) and of the [tetron-wm](https://github.com/tetronos/tetron-wm) terminal desktop.
 
-The command is `tetron-browser`, or `twww` for short. Like every tetron add-on, its minor version follows tetron core (0.15.x). Changes over Carbonyl v0.0.3 (see [changelog.md](changelog.md)):
+The command is `tetron-browser`, or `twww` for short.
 
-- Resizing a window no longer crashes the browser (a resize ran on the wrong thread from a signal handler, and very small windows overflowed the cell buffer).
-- The render thread exits instead of spinning when its channel closes, and a dead render thread no longer takes the browser down.
-- It opens a bookmarks page with a search box instead of a blank page, and the navigation bar has buttons for home `[⌂]`, bookmark `[☆]` and zoom `[−][100%][+]`.
-- Right-click menu on links and images: open in a new tab, copy the address (terminal clipboard, OSC 52), save the file to `~/Downloads`, open it in the default app (`xdg-open`; also a left click on `magnet:` links).
-- Tabs without the memory cost: middle-click a link (or use the right-click menu) to open it in a background tab; one page is live at a time and switching reloads it at its scroll position. Tabs reopen on the next start.
-- Clicks land on the text you see (page text was drawn one row above where clicks reached). The page is an ordinary Netscape bookmarks file you can edit or import elsewhere; `tetron-browser --help` lists where it is looked for.
+## Install
 
-Releases ship the Carbonyl v0.0.3 Chromium runtime (fetched from our unmodified mirror, release [`runtime-v0.0.3-upstream`](https://github.com/tetronos/tetron-browser/releases/tag/runtime-v0.0.3-upstream), SHA256-pinned) with the rebuilt `libcarbonyl.so`, built on Debian 12 (glibc 2.34 or newer is enough). Debian and TetronOS users get it as the `tetron-browser` package.
+TetronOS, and tetron-wm's suite installer (essentials collection and up), install it for you. Otherwise, on Linux amd64:
 
-The original Carbonyl README follows; its commands say `carbonyl`.
+- **Debian, Ubuntu and their derivatives, with the tetronos apt repository** (updated by `apt upgrade`): add the repository as described at https://tetronos.github.io/apt, then `sudo apt install tetron-browser`.
+- **The release `.deb`**: download `tetron-browser_<version>-1_amd64.deb` from the [latest release](https://github.com/tetronos/tetron-browser/releases/latest), check it against its `.sha256`, then `sudo apt install ./tetron-browser_<version>-1_amd64.deb`.
+- **Other distributions**: the release zip `tetron-browser.linux-amd64.zip` (with `.sha256`). Unpack it anywhere and run `tetron-browser` from that folder; it needs glibc 2.34 or newer and the usual Chromium libraries (nss, nspr, expat, alsa).
 
----
+There is no arm64 or macOS build yet.
 
-<table align="center">
-  <tbody>
-    <tr>
-      <td>
-        <p></p>
-        <pre>
-   O    O
-    \  /
-O —— Cr —— O
-    /  \
-   O    O</pre>
-      </td>
-      <td><h1>Carbonyl</h1></td>
-    </tr>
-  </tbody>
-</table>
+## Use
 
-Carbonyl is a Chromium based browser built to run in a terminal. [Read the blog post](https://fathy.fr/carbonyl).
-
-It supports pretty much all Web APIs including WebGL, WebGPU, audio and video playback, animations, etc..
-
-It's snappy, starts in less than a second, runs at 60 FPS, and idles at 0% CPU usage. It does not require a window server (i.e. works in a safe-mode console), and even runs through SSH.
-
-Carbonyl originally started as [`html2svg`](https://github.com/fathyb/html2svg) and is now the runtime behind it.
-
-## Usage
-
-> Carbonyl on Linux without Docker requires the same dependencies as Chromium.
-
-### Docker
-
-```shell
-$ docker run --rm -ti fathyb/carbonyl https://youtube.com
+```sh
+tetron-browser                     # the home page, or the tabs from last time
+tetron-browser https://example.org
+tetron-browser --help              # every option, key and file
 ```
 
-### npm
+Options: `-f/--fps` (default 60), `-z/--zoom` in percent, `-b/--bitmap` (text drawn as bitmaps), `-d/--debug`, `-v/--version`; most Chromium options work too.
 
-```console
-$ npm install --global carbonyl
-$ carbonyl https://github.com
-```
+What it does:
 
-### Binaries
+- **Navigation bar:** back, forward, reload, home `[⌂]`, bookmark `[☆]`, zoom `[−][100%][+]`. Click the address to edit it.
+- **Home page:** your bookmarks with a search box. It is an ordinary Netscape bookmarks file, so you can edit it by hand or import it into another browser. tetron-wm's Start Page shows the same file.
+- **Tabs:** middle-click a link, or use the right-click menu, to open it in a background tab; its title is read from the start of the page. Only the shown tab is a live page, so tabs cost no memory; switching loads the page again at its scroll position. Alt+1..9 switch, Alt+W closes. Tabs reopen on the next start.
+- **Right-click menu** on links and images: open in a new tab, copy the address (terminal clipboard, OSC 52), save to the download folder, open in the default app (`xdg-open`). A left click on a `magnet:` or other non-web link opens it in the default app as well.
 
-- [macOS amd64](https://github.com/fathyb/carbonyl/releases/download/v0.0.2/carbonyl.macos-amd64.zip)
-- [macOS arm64](https://github.com/fathyb/carbonyl/releases/download/v0.0.2/carbonyl.macos-arm64.zip)
-- [Linux amd64](https://github.com/fathyb/carbonyl/releases/download/v0.0.2/carbonyl.linux-amd64.zip)
-- [Linux arm64](https://github.com/fathyb/carbonyl/releases/download/v0.0.2/carbonyl.linux-arm64.zip)
+## Files
 
-## Demo
+| What | Where |
+|---|---|
+| bookmarks and home page | `~/.config/tetron-browser/bookmarks.html`; another home page: `TETRON_BROWSER_HOME` or the file `~/.config/tetron-browser/home` |
+| download folder | `TETRON_BROWSER_DOWNLOADS`, or the file `~/.config/tetron-browser/downloads`, default `~/Downloads` |
+| browser profile (cookies, logins, cache) | `~/.config/tetron-browser/` (the package's `tetron-browser` command sets it; the zip's program uses Chromium's default unless you pass `--user-data-dir`) |
+| saved tabs | `~/.local/state/tetron-browser/tabs.tsv` |
 
-<table>
-  <tbody>
-    <tr>
-      <td>
-        <video src="https://user-images.githubusercontent.com/5746414/213682926-f1cc2de7-a38c-4125-9257-92faecfc7e24.mp4">
-      </td>
-      <td>
-        <video src="https://user-images.githubusercontent.com/5746414/213682913-398d3d11-1af8-4ae6-a0cd-a7f878efd88b.mp4">
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2">
-        <video src="https://user-images.githubusercontent.com/5746414/213682918-d6396a4f-ee23-431d-828e-4ad6a00e690e.mp4">
-      </td>
-    </tr>
-  </tbody>
-</table>
+`~/.config` and `~/.local/state` follow `XDG_CONFIG_HOME` and `XDG_STATE_HOME` when set.
 
-## Known issues
+## Known limits
 
-- Fullscreen mode not supported yet
+- **Old engine:** the Chromium inside is version 111 (early 2023) and has had no security fixes since. Use it for reading, and keep banking and other sensitive accounts in a maintained browser until the engine is updated (planned).
+- **Cloudflare "verify you are human" checks** can not be passed: the click does not reach the checkbox.
+- Files behind a login are not saved by the right-click menu (it downloads without the page's cookies).
+- Dragging the sideways scroll bar's handle does not work yet; tilt the wheel, use Shift+wheel or the arrow keys.
 
-## Comparisons
+## Build
 
-### Lynx
+tetron-browser has two parts: the Chromium program (the runtime), and `libcarbonyl.so`, a Rust library that draws the page in the terminal and handles input, built from this repository.
 
-Lynx is the original terminal web browser, and the oldest one still maintained.
+- **The Rust part:** `cargo build --release`, then put `target/release/libcarbonyl.so` next to the `tetron-browser` program of a release zip.
+- **A release zip:** `scripts/release-tetron-browser.sh OUTDIR` (needs Docker) builds `libcarbonyl.so` on Debian 12 and packs it with the Chromium runtime, which is checked against a pinned SHA256.
+- **Releases:** pushing a new version in `Cargo.toml` to main makes the GitHub workflow build the zip and the `.deb` and publish the release. Versions follow tetron core: 0.15.x until the TetronOS 1.0 release.
+- **The Chromium runtime** is built from Chromium 111.0.5511.1 with the patches in `chromium/patches/` (`scripts/gclient.sh`, `scripts/patches.sh`, `scripts/gn.sh`, `scripts/build.sh`). That takes hours and about 100 GB of disk. Releases use a prebuilt runtime for now; building our own, and then moving to a current Chromium, is the next step.
 
-#### Pros
+Changes are listed in [changelog.md](changelog.md).
 
-- When it understands a page, Lynx has the best layout, fully optimized for the terminal
+## Credits and license
 
-#### Cons
-
-> Some might sound like pluses, but Browsh and Carbonyl let you disable most of those if you'd like
-
-- Does not support a lot of modern web standards
-- Cannot run JavaScript/WebAssembly
-- Cannot view or play media (audio, video, DOOM)
-
-### Browsh
-
-Browsh is the original "normal browser into a terminal" project. It starts Firefox in headless mode and connects to it through an automation protocol.
-
-#### Pro
-
-- It's easier to update the underlying browser: just update Firefox
-- This makes development easier: just install Firefox and compile the Go code in a few seconds
-- As of today, Browsh supports extensions while Carbonyl doesn't, although it's on our roadmap
-
-#### Cons
-
-- It runs slower and requires more resources than Carbonyl. 50x more CPU power is needed for the same content in average, that's because Carbonyl does not downscale or copy the window framebuffer, it natively renders to the terminal resolution.
-- It uses custom stylesheets to fix the layout, which is less reliable than Carbonyl's changes to its HTML engine (Blink).
-
-## Operating System Support
-
-As far as tested, the operating systems under are supported:
-
-- Linux (Debian, Ubuntu and Arch tested)
-- MacOS
-- Windows 11 and WSL
-
-## Contributing
-
-Carbonyl is split in two parts: the "core" which is built into a shared library (`libcarbonyl`), and the "runtime" which dynamically loads the core (`carbonyl` executable).
-
-The core is written in Rust and takes a few seconds to build from scratch. The runtime is a modified version of the Chromium headless shell and takes more than an hour to build from scratch.
-
-If you're just making changes to the Rust code, build `libcarbonyl` and replace it in a release version of Carbonyl.
-
-### Core
-
-```console
-$ cargo build
-```
-
-### Runtime
-
-Few notes:
-
-- Building the runtime is almost the same as building Chromium with extra steps to patch and bundle the Rust library. Scripts in the `scripts/` directory are simple wrappers around `gn`, `ninja`, etc..
-- Building Chromium for arm64 on Linux requires an amd64 processor
-- Carbonyl is only tested on Linux and macOS, other platforms likely require code changes to Chromium
-- Chromium is huge and takes a long time to build, making your computer mostly unresponsive. An 8-core CPU such as an M1 Max or an i9 9900k with 10 Gbps fiber takes around ~1 hour to fetch and build. It requires around 100 GB of disk space.
-
-#### Fetch
-
-> Fetch Chromium's code.
-
-```console
-$ ./scripts/gclient.sh sync
-```
-
-#### Apply patches
-
-> Any changes made to Chromium will be reverted, make sure to save any changes you made.
-
-```console
-$ ./scripts/patches.sh apply
-```
-
-#### Configure
-
-```console
-$ ./scripts/gn.sh args out/Default
-```
-
-> `Default` is the target name, you can use multiple ones and pick any name you'd like, i.e.:
->
-> ```console
-> $ ./scripts/gn.sh args out/release
-> $ ./scripts/gn.sh args out/debug
-> # or if you'd like to build a multi-platform image
-> $ ./scripts/gn.sh args out/arm64
-> $ ./scripts/gn.sh args out/amd64
-> ```
-
-When prompted, enter the following arguments:
-
-```gn
-import("//carbonyl/src/browser/args.gn")
-
-# uncomment this to build for arm64
-# target_cpu = "arm64"
-
-# comment this to disable ccache
-cc_wrapper = "env CCACHE_SLOPPINESS=time_macros ccache"
-
-# comment this for a debug build
-is_debug = false
-symbol_level = 0
-is_official_build = true
-```
-
-#### Build binaries
-
-```console
-$ ./scripts/build.sh Default
-```
-
-This should produce the following outputs:
-
-- `out/Default/headless_shell`: browser binary
-- `out/Default/icudtl.dat`
-- `out/Default/libEGL.so`
-- `out/Default/libGLESv2.so`
-- `out/Default/v8_context_snapshot.bin`
-
-#### Build Docker image
-
-```console
-# Build arm64 Docker image using binaries from the Default target
-$ ./scripts/docker-build.sh Default arm64
-# Build amd64 Docker image using binaries from the Default target
-$ ./scripts/docker-build.sh Default amd64
-```
-
-#### Run
-
-```
-$ ./scripts/run.sh Default https://wikipedia.org
-```
+tetron-browser continues [Carbonyl](https://github.com/fathyb/carbonyl) by Fathy Boundjadj, whose last release was v0.0.3 in February 2023; the Chromium runtime in releases is that release's, from an unmodified mirror ([`runtime-v0.0.3-upstream`](https://github.com/tetronos/tetron-browser/releases/tag/runtime-v0.0.3-upstream)). BSD-3-Clause, see [license.md](license.md); Chromium is under its own BSD-style license. Full notices: [packaging/copyright](packaging/copyright).
