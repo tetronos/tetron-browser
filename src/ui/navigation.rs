@@ -8,7 +8,10 @@ use crate::{
     utils::log,
 };
 
-use super::tabs::{session_path, Tabs};
+use super::{
+    menu::{Entry, Menu, Probe},
+    tabs::{session_path, Tabs},
+};
 
 pub enum NavigationAction {
     Ignore,
@@ -16,9 +19,16 @@ pub enum NavigationAction {
     GoTo(String),
     /// Several loads in order (a scroll report on the old page, then the new page).
     Run(Vec<String>),
-    /// Right or middle click on the page at this cell: open the link there in a
+    /// Middle click on the page at this cell: open the link there in a
     /// background tab.
     OpenLinkAt(Point),
+    /// Right click on the page at this cell: probe for a link or image there;
+    /// the answer opens the context menu (see `set_title`).
+    ProbeAt(Point),
+    /// Put this text on the clipboard (OSC 52).
+    Copy(String),
+    /// Download `url` with the page `referer` into the download directory.
+    Save { url: String, referer: Option<String>, image: bool },
     GoBack(),
     GoForward(),
     Refresh(),
@@ -42,6 +52,26 @@ fn scroll_restore_script(y: i64) -> String {
     format!(
         "javascript:void((function(){{function s(){{window.scrollTo(0,{y})}}\
          if(document.readyState=='complete')s();else window.addEventListener('load',s)}})())"
+    )
+}
+
+/// Script that reports the link and the image at CSS pixel (x, y): the
+/// message `probe <link> <image>`, each URI-component encoded, `-` for none.
+/// Image: an `img` (its `currentSrc`), a `video` poster, or the element's
+/// CSS background image. URLs longer than a title can carry are left out.
+/// No `%` or `#` in the script: Chromium decodes and cuts `javascript:` URLs.
+pub fn probe_script(x: i32, y: i32) -> String {
+    format!(
+        "javascript:void((function(){{var e=document.elementFromPoint({x},{y});if(!e)return;\
+         var a=e.closest('a[href]'),i='';\
+         if(e.tagName=='IMG')i=e.currentSrc||e.src;\
+         else if(e.tagName=='VIDEO')i=e.poster||'';\
+         else{{var m=/url[(][\"']?(.*?)[\"']?[)]/.exec(getComputedStyle(e).backgroundImage);\
+         if(m)i=new URL(m[1],document.baseURI).href}}\
+         function f(u){{u=u?encodeURIComponent(u):'';return u&&u.length<1800?u:'-'}}\
+         var t=document.title;\
+         document.title='tetron-browser-message:probe '+f(a&&a.href)+' '+f(i);\
+         setTimeout(function(){{document.title=t}},100)}})())"
     )
 }
 
@@ -111,6 +141,14 @@ pub struct Navigation {
     cursor: Option<usize>,
     can_go_back: bool,
     can_go_forward: bool,
+    /// The context menu, while it is open.
+    menu: Option<Menu>,
+    /// The right-clicked cell waiting for its probe answer.
+    menu_at: Option<Point>,
+    /// The mouse up of a click the menu took: not for the page.
+    swallow_up: bool,
+    /// A short message shown in place of the URL ("copied", "saved to ...").
+    status: Option<String>,
 }
 
 impl Navigation {
@@ -129,6 +167,38 @@ impl Navigation {
             cursor: None,
             can_go_back: false,
             can_go_forward: false,
+            menu: None,
+            menu_at: None,
+            swallow_up: false,
+            status: None,
+        }
+    }
+
+    /// The whole cell buffer (UI rows and page) and its UI rows, for the menu.
+    fn buffer_size(&self) -> (Size, u32) {
+        (Size::new(self.size.width, self.size.height + self.rows), self.rows)
+    }
+
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.status = status;
+    }
+
+    /// Runs a menu entry.
+    fn run(&mut self, entry: Entry) -> NavigationAction {
+        match entry {
+            Entry::OpenInNewTab(url) => {
+                self.tabs().open_background(&url);
+                NavigationAction::Ignore
+            }
+            Entry::CopyLink(url) | Entry::CopyImage(url) => NavigationAction::Copy(url),
+            Entry::SaveLink(url) => {
+                self.status = Some(format!("saving {url}"));
+                NavigationAction::Save { url, referer: self.url.clone(), image: false }
+            }
+            Entry::SaveImage(url) => {
+                self.status = Some(format!("saving {url}"));
+                NavigationAction::Save { url, referer: self.url.clone(), image: true }
+            }
         }
     }
 
@@ -226,6 +296,23 @@ impl Navigation {
             _ => key.modifiers.alt,
         };
 
+        if let Some(mut menu) = self.menu.take() {
+            match key.char {
+                // Up, Down
+                0x11 => menu.step(-1),
+                0x12 => menu.step(1),
+                // Return
+                0x0d => return menu.hover().and_then(|h| menu.entry(h).cloned()).map_or(NavigationAction::Ignore, |e| self.run(e)),
+                // Anything else closes the menu.
+                _ => return NavigationAction::Ignore,
+            }
+
+            self.menu = Some(menu);
+            return NavigationAction::Ignore;
+        }
+
+        self.status = None;
+
         match self.cursor {
             None => match (modifier_key, key.char) {
                 (true, 0x14) => NavigationAction::GoBack(),
@@ -293,8 +380,13 @@ impl Navigation {
     }
 
     /// `button`: 0 left, 1 middle, 2 right. Only left clicks reach the page;
-    /// right and middle clicks open links in background tabs.
+    /// middle clicks open links in background tabs, right clicks open the
+    /// context menu.
     pub fn mouse_up(&mut self, origin: Point, button: u8) -> NavigationAction {
+        if button == 0 && std::mem::take(&mut self.swallow_up) {
+            return NavigationAction::Ignore;
+        }
+
         if self.on_page(origin) && button == 0 {
             self.cursor = None;
 
@@ -304,13 +396,33 @@ impl Navigation {
         }
     }
     pub fn mouse_down(&mut self, origin: Point, button: u8) -> NavigationAction {
+        self.status = None;
+        self.menu_at = None;
+
+        // An open menu takes a left click: on an entry it runs it, elsewhere
+        // it only closes the menu. Other buttons close it and go on.
+        if let Some(menu) = self.menu.take() {
+            if button == 0 {
+                let (size, top) = self.buffer_size();
+                self.swallow_up = true;
+
+                return match menu.hit(origin, size, top).and_then(|i| menu.entry(i).cloned()) {
+                    Some(entry) => self.run(entry),
+                    None => NavigationAction::Ignore,
+                };
+            }
+        }
+
         if self.on_page(origin) {
             self.cursor = None;
 
-            return if button == 0 {
-                NavigationAction::Forward
-            } else {
-                NavigationAction::OpenLinkAt(origin)
+            return match button {
+                0 => NavigationAction::Forward,
+                1 => NavigationAction::OpenLinkAt(origin),
+                _ => {
+                    self.menu_at = Some(origin);
+                    NavigationAction::ProbeAt(origin)
+                }
             };
         }
 
@@ -360,6 +472,13 @@ impl Navigation {
         }
     }
     pub fn mouse_move(&mut self, origin: Point) -> NavigationAction {
+        let (size, top) = self.buffer_size();
+
+        if let Some(menu) = &mut self.menu {
+            menu.set_hover(menu.hit(origin, size, top));
+            return NavigationAction::Ignore;
+        }
+
         if self.on_page(origin) {
             NavigationAction::Forward
         } else {
@@ -435,6 +554,8 @@ impl Navigation {
         // A new page starts unzoomed (the zoom is a style on the old page).
         if self.url.as_deref() != Some(url) {
             self.zoom = 100;
+            self.menu = None;
+            self.menu_at = None;
         }
 
         self.url = Some(url.to_owned());
@@ -461,6 +582,13 @@ impl Navigation {
         if let Some(message) = title.strip_prefix(TITLE_MESSAGE) {
             if let Some(url) = message.strip_prefix("open ") {
                 self.tabs().open_background(url.trim());
+            } else if let Some(body) = message.strip_prefix("probe ") {
+                let entries = Probe::parse(body).entries();
+
+                match self.menu_at.take() {
+                    Some(at) if !entries.is_empty() => self.menu = Some(Menu::new(entries, at)),
+                    _ => (),
+                }
             } else if let Some(rest) = message.strip_prefix("scroll ") {
                 let mut parts = rest.split_whitespace().map(str::parse::<i64>);
 
@@ -551,7 +679,11 @@ impl Navigation {
         } else {
             0
         };
-        let url: String = self.display_url().chars().take(space).collect();
+        let shown = match (&self.status, self.cursor) {
+            (Some(status), None) => status.as_str(),
+            _ => self.display_url(),
+        };
+        let url: String = shown.chars().take(space).collect();
         let width = url.width();
         let padded = format!(" {}{} ", url, " ".repeat(space - width));
         let mut elements = Vec::new();
@@ -598,6 +730,13 @@ impl Navigation {
         }
 
         elements
+    }
+
+    /// What is drawn over the page: the context menu.
+    pub fn render_overlay(&self) -> Vec<(Point, NavigationElement)> {
+        let (size, top) = self.buffer_size();
+
+        self.menu.as_ref().map_or_else(Vec::new, |menu| menu.render(size, top))
     }
 }
 
@@ -762,11 +901,11 @@ mod tests {
     }
 
     #[test]
-    fn right_and_middle_clicks_on_the_page_open_links_left_goes_through() {
+    fn right_click_probes_middle_opens_links_left_goes_through() {
         let mut nav = with_tabs();
 
         assert!(matches!(nav.mouse_down((10, 5).into(), 0), NavigationAction::Forward));
-        assert!(matches!(nav.mouse_down((10, 5).into(), 2), NavigationAction::OpenLinkAt(p) if p == (10, 5).into()));
+        assert!(matches!(nav.mouse_down((10, 5).into(), 2), NavigationAction::ProbeAt(p) if p == (10, 5).into()));
         assert!(matches!(nav.mouse_down((10, 5).into(), 1), NavigationAction::OpenLinkAt(_)));
         assert!(matches!(nav.mouse_up((10, 5).into(), 2), NavigationAction::Ignore));
         assert!(matches!(nav.mouse_up((10, 5).into(), 0), NavigationAction::Forward));
@@ -785,6 +924,65 @@ mod tests {
         assert!(!nav.set_title(&format!("tetron-browser-message:scroll {id} 640")));
         assert_eq!(nav.tabs().list()[0].scroll, 640);
         assert!(nav.set_title("Real"));
+    }
+
+    /// Right-click, the probe answers, the menu opens at the click; clicks
+    /// and keys on it run entries and do not reach the page.
+    #[test]
+    fn context_menu_opens_on_the_probe_answer_and_runs_entries() {
+        let mut nav = nav();
+        nav.set_size(Size::new(80, 23), 1);
+        let probe = "tetron-browser-message:probe https%3A%2F%2Fd.org%2Ff.pdf https%3A%2F%2Fd.org%2Fi.png";
+
+        assert!(!nav.set_title(probe), "no right-click waiting: no menu");
+        assert!(nav.render_overlay().is_empty());
+
+        assert!(matches!(nav.mouse_down((10, 5).into(), 2), NavigationAction::ProbeAt(_)));
+        nav.set_title("tetron-browser-message:probe - -");
+        assert!(nav.render_overlay().is_empty(), "nothing found: no menu");
+
+        nav.mouse_down((10, 5).into(), 2);
+        nav.set_title(probe);
+        let overlay = nav.render_overlay();
+        assert_eq!(overlay.len(), 5);
+        assert_eq!(overlay[0].0, Point::new(10, 6));
+        assert!(overlay[1].1.text.contains("Copy link address"));
+
+        // Hover highlights, the page does not see the move.
+        assert!(matches!(nav.mouse_move((12, 7).into()), NavigationAction::Ignore));
+        assert_eq!(nav.menu.as_ref().unwrap().hover(), Some(1));
+
+        // Click on "Copy link address": copies, and the mouse up is swallowed.
+        assert!(matches!(nav.mouse_down((12, 7).into(), 0), NavigationAction::Copy(u) if u == "https://d.org/f.pdf"));
+        assert!(matches!(nav.mouse_up((12, 7).into(), 0), NavigationAction::Ignore));
+        assert!(matches!(nav.mouse_up((12, 7).into(), 0), NavigationAction::Forward));
+        assert!(nav.render_overlay().is_empty());
+
+        // Keyboard: Down three times to "Save link", Return saves.
+        nav.mouse_down((10, 5).into(), 2);
+        nav.set_title(probe);
+        for _ in 0..3 {
+            nav.keypress(&0x12.into());
+        }
+        match nav.keypress(&0x0d.into()) {
+            NavigationAction::Save { url, referer, image: false } => {
+                assert_eq!(url, "https://d.org/f.pdf");
+                assert_eq!(referer.as_deref(), Some("https://example.com"));
+            }
+            _ => panic!("Return on Save link"),
+        }
+        assert!(bar(&nav, 120).contains("saving https://d.org/f.pdf"), "status in place of the URL");
+
+        // Open in new tab; a click outside only closes.
+        nav.mouse_down((10, 5).into(), 2);
+        nav.set_title(probe);
+        assert!(matches!(nav.mouse_down((40, 20).into(), 0), NavigationAction::Ignore));
+        assert!(nav.render_overlay().is_empty());
+        nav.mouse_up((40, 20).into(), 0);
+        nav.mouse_down((10, 5).into(), 2);
+        nav.set_title(probe);
+        nav.mouse_down((10, 6).into(), 0);
+        assert_eq!(nav.tabs().list().last().unwrap().url, "https://d.org/f.pdf");
     }
 
     #[test]

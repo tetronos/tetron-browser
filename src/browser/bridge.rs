@@ -426,6 +426,26 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                             log::debug!("open link at cell {cell:?} = px {x},{y}");
                             go_to(crate::ui::navigation::open_link_script(x as i32, y as i32))
                         }
+                        NavigationAction::ProbeAt(cell) => {
+                            let (x, y): (u32, u32) = scale(cell.x as usize, cell.y as usize, text_y);
+
+                            log::debug!("probe at cell {cell:?} = px {x},{y}");
+                            go_to(crate::ui::navigation::probe_script(x as i32, y as i32))
+                        }
+                        // Done by the renderer; never reaches here.
+                        NavigationAction::Copy(_) => (),
+                        NavigationAction::Save { url, referer, image } => {
+                            thread::spawn(move || {
+                                let dir = crate::download::dir();
+                                let status = match crate::download::save(&url, referer.as_deref(), image, &dir) {
+                                    Ok(path) => format!("saved to {}", path.display()),
+                                    Err(message) => message,
+                                };
+
+                                log::debug!("save {url}: {status}");
+                                bridge.lock().unwrap().renderer.render(move |r| r.set_status(Some(status.clone())));
+                            });
+                        }
                     };
 
                     return false;

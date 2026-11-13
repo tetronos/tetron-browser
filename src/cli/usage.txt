@@ -20,9 +20,20 @@ Navigation bar:
     [−][100%][+] zoom out, reset, in (a new page starts at 100%)
     Click the address to edit it, Enter to go.
 
+Right-click menu:
+    Right-click a link or an image: Open in new tab, Copy link address, Save link
+    to Downloads, Copy image address, Save image to Downloads. Click an entry, or
+    Up/Down and Enter; a click outside or any other key closes it. Copying uses
+    the terminal clipboard (OSC 52; tetron-wm keeps it in its clipboard history).
+    Saving uses curl (or wget) without the page's cookies: a file behind a login
+    is not saved. Files are never overwritten (name-1.ext). The folder:
+      TETRON_BROWSER_DOWNLOADS=<path>      environment variable
+      ~/.config/tetron-browser/downloads   file whose first line is a path
+      ~/Downloads                          default
+
 Tabs:
-    Right-click (or middle-click) a link to open it in a background tab. With two
-    or more tabs a strip shows under the bar: click a tab to switch, × to close,
+    Middle-click a link, or Open in new tab in the menu, for a background tab.
+    With two or more tabs a strip shows under the bar: click a tab to switch, × to close,
     [+] for a new tab on the home page. Alt+1..9 switch, Alt+W closes the tab.
     Only the shown tab is a live page: switching loads the other page again and
     scrolls back to where it was (logins stay; text typed into forms does not).

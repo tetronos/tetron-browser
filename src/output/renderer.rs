@@ -54,7 +54,26 @@ impl Renderer {
         let action = self.nav.keypress(key);
 
         self.sync_ui_rows();
-        Ok(action)
+        self.copy(action)
+    }
+
+    /// Does a `Copy` action here: an OSC 52 clipboard store, which tetron-wm
+    /// and most terminals take. Other actions go back to the caller.
+    fn copy(&mut self, action: NavigationAction) -> io::Result<NavigationAction> {
+        let NavigationAction::Copy(text) = action else { return Ok(action) };
+        let mut stdout = io::stdout();
+
+        write!(stdout, "\x1b]52;c;{}\x07", base64(text.as_bytes()))?;
+        stdout.flush()?;
+        log::debug!("copied {text}");
+        self.nav.set_status(Some(format!("copied {text}")));
+
+        Ok(NavigationAction::Ignore)
+    }
+
+    /// A short message in place of the URL (`None` clears it).
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.nav.set_status(status)
     }
 
     /// Ask for a resize when the tab strip appears or goes: the window then
@@ -74,7 +93,7 @@ impl Renderer {
         let action = self.nav.mouse_down(origin, button);
 
         self.sync_ui_rows();
-        Ok(action)
+        self.copy(action)
     }
     pub fn mouse_move(&mut self, origin: Point) -> io::Result<NavigationAction> {
         let action = self.nav.mouse_move(origin);
@@ -141,17 +160,47 @@ impl Renderer {
             self.draw_ui_text(&element.text, origin, element.foreground);
         }
 
+        // The menu is painted over the page without touching the page cells,
+        // so the page shows again where it was when the menu goes.
+        let mut overlay = std::collections::HashMap::new();
+        let width = self.size.width as i32;
+
+        for (origin, element) in self.nav.render_overlay() {
+            for (i, grapheme) in UnicodeSegmentation::graphemes(element.text.as_str(), true).enumerate() {
+                let x = origin.x + i as i32;
+                let at = origin.y * width + x;
+
+                if x < 0 || x >= width || origin.y < 0 || at as usize >= self.cells.len() {
+                    continue;
+                }
+
+                let mut cell = Cell::new(x as u32, origin.y as u32);
+                let background = element.background;
+
+                cell.quadrant = (background, background, background, background);
+                cell.grapheme = Some(Rc::new(Grapheme {
+                    color: element.foreground,
+                    index: 0,
+                    width: 1,
+                    char: grapheme.to_owned(),
+                }));
+                overlay.insert(at as usize, cell);
+            }
+        }
+
         self.painter.begin()?;
 
-        for (previous, current) in self.cells.iter_mut() {
-            if current == previous {
+        for (index, (previous, current)) in self.cells.iter_mut().enumerate() {
+            let shown = overlay.get(&index).unwrap_or(current);
+
+            if shown == previous {
                 continue;
             }
 
-            previous.quadrant = current.quadrant;
-            previous.grapheme = current.grapheme.clone();
+            previous.quadrant = shown.quadrant;
+            previous.grapheme = shown.grapheme.clone();
 
-            self.painter.paint(current)?;
+            self.painter.paint(shown)?;
         }
 
         self.painter.end(self.nav.cursor())?;
@@ -387,8 +436,33 @@ impl Renderer {
     }
 }
 
+/// Standard base64 with padding (for OSC 52).
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
+
+        for i in 0..4 {
+            out.push(if i <= chunk.len() { TABLE[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn base64_matches_the_standard() {
+        assert_eq!(super::base64(b""), "");
+        assert_eq!(super::base64(b"f"), "Zg==");
+        assert_eq!(super::base64(b"fo"), "Zm8=");
+        assert_eq!(super::base64(b"foo"), "Zm9v");
+        assert_eq!(super::base64(b"https://a.org/?q=1"), "aHR0cHM6Ly9hLm9yZy8/cT0x");
+    }
+
     use super::*;
 
     /// Resizing a window down to one or two cells made the navigation bar

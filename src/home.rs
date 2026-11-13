@@ -42,7 +42,7 @@ pub fn has_url_arg(args: &[String]) -> bool {
     args.iter().any(|arg| !arg.starts_with('-'))
 }
 
-fn config_dir() -> Option<PathBuf> {
+pub(crate) fn config_dir() -> Option<PathBuf> {
     match env::var_os("XDG_CONFIG_HOME") {
         Some(dir) if !dir.is_empty() => Some(PathBuf::from(dir)),
         _ => env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")),

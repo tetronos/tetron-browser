@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changes
+
+- Right-click menu on links and images: Open in new tab, Copy link address, Copy image address (OSC 52 terminal clipboard), Save link and Save image to the download folder (`~/Downloads`, or `TETRON_BROWSER_DOWNLOADS`, or `~/.config/tetron-browser/downloads`). Saving uses curl or wget without the page cookies, so a file behind a login is reported, not saved; `data:` images are written directly; files are never overwritten. The status shows in place of the address. Right-click no longer opens a background tab; middle-click still does
+
 ### Build
 
 - Release builds fetch the Chromium runtime (Carbonyl v0.0.3) from an unmodified mirror in this repository, release `runtime-v0.0.3-upstream`, instead of the upstream project; the SHA256 pin is unchanged
