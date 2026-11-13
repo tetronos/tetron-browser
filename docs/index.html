@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="images/icon.svg">
+<script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<title>tetron-browser: the web in your terminal</title>
+<meta name="description" content="A Chromium based web browser for the terminal: JavaScript, logins, images and video drawn as truecolor blocks, with mouse, tabs and bookmarks. Works over ssh and on a bare Linux console.">
+<style>
+  :root { --bg:#0e1116; --surface:#161b22; --surface-2:#1e252e; --fg:#e6eaf0; --muted:#98a3b1; --border:#2a323d;
+    --accent:#7ee0b0; --accent-2:#8fb8dc; --warn:#e0a96b; --bad:#e07b7b;
+    --code:#0b0e13; --nav-bg:rgba(14,17,22,.88); --us-bg:rgba(126,224,176,.07); --on-accent:#04130c; --shadow:rgba(0,0,0,.35); --shadow-lg:rgba(0,0,0,.5);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:dark; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f6f8fa; --surface:#ffffff; --surface-2:#eaeef3; --fg:#1b222c; --muted:#556170; --border:#d5dce5;
+    --accent:#14744c; --accent-2:#2a5f8f; --warn:#955510; --bad:#b83a3a;
+    --code:#ffffff; --nav-bg:rgba(246,248,250,.9); --us-bg:rgba(20,116,76,.08); --on-accent:#ffffff; --shadow:rgba(30,45,70,.14); --shadow-lg:rgba(30,45,70,.2); color-scheme:light; } }
+  :root[data-theme="light"] { --bg:#f6f8fa; --surface:#ffffff; --surface-2:#eaeef3; --fg:#1b222c; --muted:#556170; --border:#d5dce5;
+    --accent:#14744c; --accent-2:#2a5f8f; --warn:#955510; --bad:#b83a3a;
+    --code:#ffffff; --nav-bg:rgba(246,248,250,.9); --us-bg:rgba(20,116,76,.08); --on-accent:#ffffff; --shadow:rgba(30,45,70,.14); --shadow-lg:rgba(30,45,70,.2); color-scheme:light; }
+  .tbtn { background:none; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:3px 10px; font:.75rem var(--mono); }
+  .tbtn:hover { color:var(--fg); border-color:var(--accent); }
+  :focus-visible { outline:2px solid var(--accent-2); outline-offset:2px; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 var(--sans); -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent-2); }
+  .wrap { max-width:62rem; margin:0 auto; padding:0 20px; }
+  nav { position:sticky; top:0; z-index:10; background:var(--nav-bg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+  nav .wrap { display:flex; gap:18px; align-items:center; height:48px; font-family:var(--mono); font-size:.85rem; }
+  nav .brand { color:var(--accent); font-weight:700; margin-right:auto; text-decoration:none; }
+  nav .crumb { display:flex; align-items:center; gap:6px; margin-right:auto; } nav .crumb .brand { margin-right:0; } nav .crumb .sep { color:var(--muted); }
+  nav a { color:var(--muted); text-decoration:none; } nav a:hover { color:var(--fg); }
+  nav .links { display:contents; }
+  h1 { font-size:clamp(2.2rem,7vw,4rem); line-height:1.05; letter-spacing:-.03em; margin:0 0 1rem; text-wrap:balance; }
+  h1 em { font-style:normal; color:var(--accent); }
+  h2 { font-size:clamp(1.5rem,4vw,2.1rem); letter-spacing:-.02em; margin:0 0 .5rem; text-wrap:balance; }
+  .eyebrow { font:.75rem var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 1rem; }
+  .lede { font-size:1.2rem; color:var(--muted); max-width:40rem; margin:0 0 1.6rem; text-wrap:pretty; }
+  section { padding:4.5rem 0; border-top:1px solid var(--border); }
+  .hero { padding:4rem 0 3rem; border:0; }
+  .inst { font-size:clamp(1.5rem,4vw,2.2rem); font-weight:700; letter-spacing:.22em; text-align:center; margin:2.4rem 0 .9rem; color:var(--accent); }
+  .inst-sub { text-align:center; color:var(--muted); font-size:1.05rem; margin:-.5rem 0 1rem; }
+  .inspect { font:.8rem var(--mono); color:var(--muted); text-align:center; margin:.7rem auto 0; max-width:46rem; }
+  .inspect a { white-space:nowrap; }
+  .hero .install { margin-left:auto; margin-right:auto; }
+  .hero .pills { justify-content:center; }
+  .hero .sub { text-align:center; margin-left:auto; margin-right:auto; max-width:46rem; }
+  .hero .apk { justify-content:center; text-align:center; }
+  .hero .apk span { flex:0 1 auto; }
+  .install { display:flex; align-items:center; gap:10px; background:var(--code); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font:.88rem var(--mono); max-width:46rem; }
+  .install code { flex:1; overflow-x:auto; white-space:nowrap; color:var(--fg); }
+  .install .p { color:var(--accent); }
+  button { font:inherit; cursor:pointer; }
+  .copy { background:var(--surface-2); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:5px 12px; font:.8rem var(--mono); }
+  .copy:hover { border-color:var(--accent); }
+  .sub { color:var(--muted); font-size:.88rem; margin:.7rem 0 0; }
+  .shot { margin-top:2.5rem; border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 30px 80px var(--shadow-lg); }
+  .shot img { display:block; width:100%; height:auto; }
+  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:1.6rem; }
+  .pill { font:.78rem var(--mono); color:var(--muted); border:1px solid var(--border); border-radius:99px; padding:3px 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:14px; margin-top:2rem; }
+  .win { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .win .bar { display:flex; align-items:center; gap:6px; padding:7px 12px; background:var(--surface-2); border-bottom:1px solid var(--border); font:.75rem var(--mono); color:var(--muted); }
+  .win .bar i { width:9px; height:9px; border-radius:50%; background:var(--border); } .win .bar i:first-child { background:var(--bad); }
+  .win .body { padding:14px 16px; } .win p { margin:0; color:var(--muted); font-size:.93rem; } .win h3 { margin:0 0 .3rem; font-size:1.05rem; }
+  .cmp { width:100%; border-collapse:collapse; margin-top:2rem; font-size:.93rem; }
+  .cmp th, .cmp td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .cmp th { font:.75rem var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .cmp td:first-child { color:var(--muted); } .cmp .us { background:var(--us-bg); color:var(--fg); }
+  .cmp th.us { color:var(--accent); }
+  .tablewrap { overflow-x:auto; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:2rem; }
+  .two pre { margin:0; padding:14px 16px; background:var(--code); border:1px solid var(--border); border-radius:10px; font:.82rem/1.5 var(--mono); overflow-x:auto; color:var(--muted); }
+  .two h3 { margin:0 0 .5rem; font:.78rem var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .two .good h3 { color:var(--accent); }
+  .demo { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:40px; margin-top:2.5rem; align-items:start; }
+  .steps .step { min-height:60vh; display:flex; flex-direction:column; justify-content:center; opacity:.35; transition:opacity .3s; }
+  .steps .step.on { opacity:1; }
+  .step .n { font:.8rem var(--mono); color:var(--accent); }
+  .step h3 { font-size:1.5rem; margin:.2rem 0 .4rem; } .step p { color:var(--muted); margin:0; }
+  .step kbd { font:.8rem var(--mono); background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:1px 6px; color:var(--fg); }
+  .stage { position:sticky; top:72px; }
+  .stage .frame { position:relative; border:1px solid var(--border); border-radius:12px; overflow:hidden; aspect-ratio:var(--ar,16/10); background:var(--code); box-shadow:0 20px 60px var(--shadow); }
+  .stage img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .45s; }
+  .stage img.on { opacity:1; }
+  .cap { font:.8rem var(--mono); color:var(--muted); margin-top:.6rem; text-align:center; }
+  .themes { display:grid; grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); gap:12px; margin-top:2rem; }
+  .themes figure { margin:0; } .themes img { width:100%; display:block; border:1px solid var(--border); border-radius:8px; }
+  .themes figcaption { font:.78rem var(--mono); color:var(--muted); margin-top:.4rem; }
+  .vpn { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:40px; align-items:center; margin-top:2rem; }
+  .vpn ul { margin:0; padding:0; list-style:none; display:grid; gap:12px; }
+  .vpn li { color:var(--muted); padding-left:1.2rem; position:relative; } .vpn li b { color:var(--fg); font-weight:600; }
+  .vpn li::before { content:"\25CF"; position:absolute; left:0; color:var(--accent); font-size:.7rem; top:.35rem; }
+  .tray { background:var(--code); border:1px solid var(--border); border-radius:10px; font:.85rem/1.7 var(--mono); overflow:hidden; max-width:24rem; }
+  .tray .top { display:flex; gap:16px; padding:6px 14px; background:var(--surface-2); border-bottom:1px solid var(--border); color:var(--muted); } .tray .top .on { color:var(--accent); }
+  .tray .row { display:flex; justify-content:space-between; gap:12px; padding:2px 14px; } .tray .row span:last-child { color:var(--muted); }
+  .tray .hr { border-top:1px solid var(--border); margin:6px 0; } .tray .dir { color:var(--accent); } .tray .rel { color:var(--warn); }
+  .tray .pad { padding:8px 0; }
+  .tray .note { color:var(--muted); font-size:.72rem; padding:0 14px 8px; }
+  .btn { display:inline-block; margin-top:1.6rem; padding:10px 18px; border-radius:8px; background:var(--accent); color:var(--on-accent); font-weight:600; text-decoration:none; }
+  .btn.ghost { background:none; color:var(--fg); border:1px solid var(--border); margin-left:8px; }
+  footer { border-top:1px solid var(--border); padding:2.5rem 0 3rem; color:var(--muted); font-size:.88rem; }
+  footer a { margin-right:16px; display:inline-block; white-space:nowrap; }
+  @media (max-width:760px) {
+    .two, .demo, .vpn { grid-template-columns:1fr; }
+    .stage { position:sticky; top:48px; z-index:2; background:var(--bg); padding:8px 0; }
+    .steps .step { min-height:45vh; }
+    nav .links { display:none; }
+  }
+  @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .stage img, .steps .step { transition:none; } }
+  .install.multi { display:block; } .install.multi code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; } .install.multi .copy { margin-top:10px; }
+  .grid.four { grid-template-columns:repeat(auto-fit,minmax(13rem,1fr)); }
+  .limits li { color:var(--muted); margin:.35rem 0; } .limits li b { color:var(--fg); }
+  .warnbox { border:1px solid var(--warn); border-radius:10px; padding:12px 16px; margin-top:1.6rem; color:var(--fg); background:var(--surface); }
+  .warnbox b { color:var(--warn); }
+  .files { width:100%; border-collapse:collapse; margin-top:1.4rem; font-size:.9rem; }
+  .files td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; } .files td:first-child { color:var(--muted); white-space:nowrap; }
+  .files code, .win code, .limits code, p code { font:.85em var(--mono); }
+  .shot figcaption { font:.8rem var(--mono); color:var(--muted); padding:.5rem .8rem; border-top:1px solid var(--border); background:var(--surface); }
+</style>
+
+</head>
+<body>
+<nav><div class="wrap">
+  <span class="crumb"><a class="org" href="https://tetronos.github.io/">tetronos</a><span class="sep">/</span><a class="brand" href="#top">tetron-browser</a></span>
+  <span class="links"><a href="#why">why</a><a href="#use">use</a><a href="#compare">compare</a><a href="#install">install</a><a href="#limits">limits</a></span>
+  <button class="tbtn" id="theme" type="button" aria-label="Switch between light and dark theme">light</button>
+<a href="https://github.com/tetronos/tetron-browser">github</a>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <p class="eyebrow">The real web, in a terminal.</p>
+  <h1>Chromium, drawn in <em>text</em>.</h1>
+  <p class="lede">tetron-browser renders pages with Chromium, so JavaScript, logins, video and modern layouts work, and draws them as truecolor blocks with a mouse. In any terminal, over ssh, or on a bare console with no window server.</p>
+  <p class="eyebrow inst">Install</p>
+  <p class="inst-sub">Debian, Ubuntu and their derivatives, amd64</p>
+  <div class="install multi"><code id="cmd">sudo curl -fsSLo /usr/share/keyrings/tetronos-archive-keyring.gpg https://tetronos.github.io/apt/tetronos-archive-keyring.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/tetronos.sources https://tetronos.github.io/apt/tetronos.sources
+sudo apt update &amp;&amp; sudo apt install tetron-browser</code><button class="copy" id="copy" type="button">copy</button></div>
+  <p class="inspect">Then run <code>tetron-browser</code>, or <code>twww</code> for short. Other ways: <a href="#install">install</a>.</p>
+  <div class="pills"><span class="pill">Chromium engine</span><span class="pill">mouse and keyboard</span><span class="pill">tabs</span><span class="pill">bookmarks</span><span class="pill">over ssh</span><span class="pill">no X11 or Wayland</span><span class="pill">BSD-3-Clause</span></div>
+  <figure class="shot"><img src="images/tetron-browser.png" alt="tetron-browser showing the Wikipedia article Electric ray in a terminal: navigation bar, article text, links and a photo drawn in blocks" width="1600" height="920"><figcaption>en.wikipedia.org in a 160 by 46 terminal</figcaption></figure>
+</div></header>
+
+<section id="why"><div class="wrap">
+  <p class="eyebrow">Why</p>
+  <h2>A browser where there is no browser.</h2>
+  <p class="lede">Text browsers can not run the scripts most sites need. Graphical browsers need a display. tetron-browser needs a terminal.</p>
+  <div class="grid four">
+    <div class="win"><div class="bar"><i></i><i></i><i></i>engine</div><div class="body"><h3>Pages that work</h3><p>It is Chromium underneath: JavaScript, cookies and logins, web apps, CSS layout, images and video.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>anywhere</div><div class="body"><h3>Over ssh, on a console</h3><p>Runs on a server over ssh, on a Linux console with no X11 or Wayland, or inside tmux and tetron-wm.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>mouse</div><div class="body"><h3>Point and click</h3><p>Click links and buttons, scroll with the wheel, select text fields. Keyboard input goes to the page.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>light</div><div class="body"><h3>Tabs that cost nothing</h3><p>Only the tab you look at is a live page. Background tabs keep their address, title and scroll position.</p></div></div>
+  </div>
+</div></section>
+
+<section id="use"><div class="wrap">
+  <p class="eyebrow">Use</p>
+  <h2>Everything is one click away.</h2>
+  <div class="two">
+    <div><h3>Navigation bar</h3><pre>[&#x276E;][&#x276F;] back, forward     [&#x21BB;] reload
+[&#x2302;]    home page
+[&#x2606;]    bookmark this page ([&#x2605;] removes it)
+[&#x2212;][100%][+]  zoom out, reset, in
+click the address to edit it, Enter to go</pre></div>
+    <div><h3>Mouse and keys</h3><pre>middle-click    open a link in a background tab
+right-click     link and image menu
+Alt+1..9        switch tab
+Alt+W           close tab
+Shift+wheel     scroll sideways</pre></div>
+  </div>
+  <div class="grid four">
+    <div class="win"><div class="bar"><i></i><i></i><i></i>right-click</div><div class="body"><h3>Link and image menu</h3><p>Open in new tab, copy the address to the terminal clipboard (OSC 52), save to your download folder, or open in the default app.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>magnet:</div><div class="body"><h3>Other apps</h3><p>A click on a <code>magnet:</code> or <code>mailto:</code> link, or on a file such as a <code>.torrent</code> or a PDF, hands it to <code>xdg-open</code>.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>home</div><div class="body"><h3>Your bookmarks as home</h3><p>The start page is a search box over your bookmarks: a plain Netscape bookmarks file you can edit or import into any browser.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>restore</div><div class="body"><h3>Picks up where you left off</h3><p>Tabs are saved and reopen on the next start. A URL on the command line opens as a new tab.</p></div></div>
+  </div>
+  <figure class="shot"><img src="images/home-page.png" alt="The tetron-browser home page: a search box and the default bookmarks grouped by topic" width="1600" height="480" loading="lazy"><figcaption>the home page, with the default bookmarks</figcaption></figure>
+</div></section>
+
+<section id="compare"><div class="wrap">
+  <p class="eyebrow">Compare</p>
+  <h2>How it differs.</h2>
+  <div class="tablewrap"><table class="cmp">
+    <tr><th></th><th>lynx, w3m</th><th>browsh</th><th class="us">tetron-browser</th></tr>
+    <tr><td>Engine</td><td>its own HTML parser</td><td>Firefox, run headless beside it</td><td class="us">Chromium, built in</td></tr>
+    <tr><td>JavaScript</td><td>no</td><td>yes</td><td class="us">yes</td></tr>
+    <tr><td>Images and video</td><td>lynx no; w3m images in some terminals</td><td>yes</td><td class="us">yes, drawn in the page</td></tr>
+    <tr><td>Needs installed</td><td>nothing else</td><td>Firefox</td><td class="us">nothing else (one package)</td></tr>
+    <tr><td>Best for</td><td>fast reading of simple pages</td><td>modern sites</td><td class="us">modern sites, mouse driven</td></tr>
+  </table></div>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <p class="eyebrow">Install</p>
+  <h2>Three ways in.</h2>
+  <p class="lede">TetronOS ships it, and the <a href="https://tetronos.github.io/tetron-wm/">tetron-wm</a> suite installer adds it with its essentials collection. Otherwise, on Linux amd64:</p>
+  <div class="grid">
+    <div class="win"><div class="bar"><i></i><i></i><i></i>apt repository</div><div class="body"><h3>Debian and Ubuntu</h3><p>The commands at the <a href="#top">top</a>. <code>apt upgrade</code> keeps it current. Details: <a href="https://tetronos.github.io/apt/">tetronos apt</a>.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>.deb</div><div class="body"><h3>One release file</h3><p>Download <code>tetron-browser_&lt;version&gt;-1_amd64.deb</code> from the <a href="https://github.com/tetronos/tetron-browser/releases/latest">latest release</a>, check its <code>.sha256</code>, then <code>sudo apt install ./tetron-browser_*.deb</code>.</p></div></div>
+    <div class="win"><div class="bar"><i></i><i></i><i></i>zip</div><div class="body"><h3>Any other distribution</h3><p><code>tetron-browser.linux-amd64.zip</code> from the same release. Unpack it and run <code>tetron-browser</code> in that folder. Needs glibc 2.34 or newer and nss, nspr, expat and alsa.</p></div></div>
+  </div>
+  <table class="files">
+    <tr><td>bookmarks, home page</td><td><code>~/.config/tetron-browser/bookmarks.html</code>; another home: <code>TETRON_BROWSER_HOME</code> or the file <code>~/.config/tetron-browser/home</code></td></tr>
+    <tr><td>downloads</td><td><code>TETRON_BROWSER_DOWNLOADS</code>, or the file <code>~/.config/tetron-browser/downloads</code>, default <code>~/Downloads</code></td></tr>
+    <tr><td>profile</td><td><code>~/.config/tetron-browser/</code> (cookies, logins, cache)</td></tr>
+    <tr><td>tabs</td><td><code>~/.local/state/tetron-browser/tabs.tsv</code></td></tr>
+  </table>
+</div></section>
+
+<section id="limits"><div class="wrap">
+  <p class="eyebrow">Limits</p>
+  <h2>What to know first.</h2>
+  <div class="warnbox"><b>Old engine.</b> The Chromium inside is version 111, from early 2023, with no security fixes since. Use it for reading and everyday sites; keep banking and other sensitive accounts in a maintained browser until the engine is updated, which is the next big step.</div>
+  <ul class="limits">
+    <li><b>Cloudflare "verify you are human"</b> checks can not be passed yet: the click does not reach the checkbox.</li>
+    <li><b>Saving a file behind a login</b> does not work: the right-click menu downloads without the page's cookies.</li>
+    <li><b>Linux amd64 only</b> for now; no arm64 or macOS build.</li>
+    <li><b>Dragging the sideways scroll bar</b> does not work yet; use Shift+wheel or the arrow keys.</li>
+  </ul>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Try it now.</h2>
+  <div class="install multi" style="margin-top:1rem"><code>sudo apt install tetron-browser
+tetron-browser https://en.wikipedia.org</code></div>
+  <p class="inspect" style="margin-left:0;text-align:left">After adding the <a href="https://tetronos.github.io/apt/">tetronos apt repository</a>. Source and releases: <a href="https://github.com/tetronos/tetron-browser">github.com/tetronos/tetron-browser</a></p>
+</div></section>
+
+<footer><div class="wrap">
+  <a href="https://github.com/tetronos/tetron-browser">GitHub</a><a href="https://github.com/tetronos/tetron-browser/releases">Releases</a><a href="https://github.com/tetronos/tetron-browser/blob/main/changelog.md">Changelog</a><a href="https://tetronos.github.io/tetron-wm/">tetron-wm</a><a href="https://tetronos.github.io/tetron/">tetron VPN</a><a href="https://tetronos.github.io/">tetronos</a>
+  <p>BSD-3-Clause. A continuation of <a href="https://github.com/fathyb/carbonyl">Carbonyl</a> by Fathy Boundjadj. Chromium is under its own BSD-style license.</p>
+</div></footer>
+
+<script>
+(function () {
+  var tb = document.getElementById('theme'), root = document.documentElement, mq = window.matchMedia && matchMedia('(prefers-color-scheme: light)');
+  function eff() { var t = root.getAttribute('data-theme'); return t || (mq && mq.matches ? 'light' : 'dark'); }
+  function label() { tb.textContent = eff() === 'dark' ? 'light' : 'dark'; }
+  label();
+  tb.addEventListener('click', function () {
+    var n = eff() === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', n);
+    try { localStorage.setItem('theme', n); } catch (e) {}
+    label();
+  });
+  if (mq && mq.addEventListener) mq.addEventListener('change', label);
+  var cmd = document.getElementById('cmd'), b = document.getElementById('copy');
+  b.addEventListener('click', function () {
+    var t = cmd.textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { b.textContent = 'copied'; }, function () {
+      var r = document.createRange(); r.selectNodeContents(cmd); var s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'select, ctrl+c';
+    });
+    setTimeout(function () { b.textContent = 'copy'; }, 2000);
+  });
+})();
+</script>
+</body>
+</html>
