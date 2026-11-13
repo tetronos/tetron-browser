@@ -177,9 +177,34 @@ impl Tabs {
     }
 
     /// A tab for `url` after the others, left in the background.
-    pub fn open_background(&mut self, url: &str) {
-        self.push_tab(url);
+    /// Returns the new tab's id (its title is fetched by id).
+    pub fn open_background(&mut self, url: &str) -> u64 {
+        let index = self.push_tab(url);
+
         self.save();
+        self.list[index].id
+    }
+
+    /// A title fetched for a background tab. Kept only while the tab still
+    /// shows `url` and has no title (a visit sets the real one).
+    pub fn set_fetched_title(&mut self, id: u64, url: &str, title: &str) {
+        if let Some(tab) = self.list.iter_mut().find(|tab| tab.id == id) {
+            if tab.url == url && tab.title.is_empty() {
+                tab.title = title.to_owned();
+                self.save();
+            }
+        }
+    }
+
+    /// Background tabs without a title, as (id, url): restored from an
+    /// older session, or never fetched.
+    pub fn untitled_background(&self) -> Vec<(u64, String)> {
+        self.list
+            .iter()
+            .enumerate()
+            .filter(|(i, tab)| *i != self.active && tab.title.trim().is_empty())
+            .map(|(_, tab)| (tab.id, tab.url.clone()))
+            .collect()
     }
 
     pub fn set_scroll(&mut self, id: u64, scroll: i64) {
@@ -322,5 +347,16 @@ mod tests {
         with_url.on_page("https://new.org/");
         assert_eq!(with_url.len(), 3);
         assert_eq!(with_url.active(), 2);
+    }
+
+    #[test]
+    fn untitled_background_tabs_are_listed_for_title_fetches() {
+        let mut tabs = Tabs::new(None);
+        tabs.on_page("https://a.org/");
+        let b = tabs.open_background("https://b.org/");
+        tabs.open_background("https://c.org/");
+        tabs.set_fetched_title(b, "https://b.org/", "B");
+        let untitled: Vec<String> = tabs.untitled_background().into_iter().map(|(_, url)| url).collect();
+        assert_eq!(untitled, ["https://c.org/"], "not the active tab, not titled ones");
     }
 }

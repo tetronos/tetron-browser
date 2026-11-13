@@ -17,7 +17,7 @@ use crate::{ui::menu::percent_decode, utils::log};
 pub const ENV_DOWNLOADS: &str = "TETRON_BROWSER_DOWNLOADS";
 
 /// Sent with each fetch, so sites answer as they would the page's browser.
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";
+pub(crate) const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";
 
 /// The download directory (see the module documentation), not created yet.
 pub fn dir() -> PathBuf {

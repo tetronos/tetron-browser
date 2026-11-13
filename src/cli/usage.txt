@@ -32,7 +32,8 @@ Right-click menu:
       ~/Downloads                          default
 
 Tabs:
-    Middle-click a link, or Open in new tab in the menu, for a background tab.
+    Middle-click a link, or Open in new tab in the menu, for a background tab;
+    its title is read from the start of the page.
     With two or more tabs a strip shows under the bar: click a tab to switch, × to close,
     [+] for a new tab on the home page. Alt+1..9 switch, Alt+W closes the tab.
     Only the shown tab is a live page: switching loads the other page again and

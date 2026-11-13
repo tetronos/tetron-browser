@@ -6,6 +6,7 @@ pub mod download;
 pub mod home;
 pub mod input;
 pub mod output;
+pub mod page_title;
 pub mod ui;
 
 mod utils;

@@ -71,6 +71,15 @@ impl Renderer {
         Ok(NavigationAction::Ignore)
     }
 
+    /// Background tabs whose title is to be fetched, as (id, url).
+    pub fn take_title_fetches(&mut self) -> Vec<(u64, String)> {
+        self.nav.take_title_fetches()
+    }
+
+    pub fn set_fetched_title(&mut self, id: u64, url: &str, title: &str) {
+        self.nav.set_fetched_title(id, url, title)
+    }
+
     /// A short message in place of the URL (`None` clears it).
     pub fn set_status(&mut self, status: Option<String>) {
         self.nav.set_status(status)

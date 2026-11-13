@@ -149,6 +149,25 @@ pub struct Navigation {
     swallow_up: bool,
     /// A short message shown in place of the URL ("copied", "saved to ...").
     status: Option<String>,
+    /// Background tabs whose title is to be fetched, as (id, url).
+    title_fetches: Vec<(u64, String)>,
+}
+
+/// A short name for a tab without a title: the host and the last part of
+/// the path (`w3.org/w3c_home.png`), or the file name of a `file:` URL.
+pub fn short_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else { return url.to_owned() };
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    let last = path.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+    let last = super::menu::percent_decode(last);
+
+    match (scheme, last.is_empty()) {
+        ("file", false) => last,
+        (_, true) => host.to_owned(),
+        _ => format!("{host}/{last}"),
+    }
 }
 
 impl Navigation {
@@ -171,7 +190,25 @@ impl Navigation {
             menu_at: None,
             swallow_up: false,
             status: None,
+            title_fetches: Vec::new(),
         }
+    }
+
+    /// Opens `url` in a background tab and asks for its title.
+    fn open_background(&mut self, url: &str) {
+        let id = self.tabs().open_background(url);
+
+        self.title_fetches.push((id, url.to_owned()));
+    }
+
+    /// The titles to fetch now, as (id, url); see `set_fetched_title`.
+    pub fn take_title_fetches(&mut self) -> Vec<(u64, String)> {
+        self.tabs();
+        std::mem::take(&mut self.title_fetches)
+    }
+
+    pub fn set_fetched_title(&mut self, id: u64, url: &str, title: &str) {
+        self.tabs().set_fetched_title(id, url, title);
     }
 
     /// The whole cell buffer (UI rows and page) and its UI rows, for the menu.
@@ -187,7 +224,7 @@ impl Navigation {
     fn run(&mut self, entry: Entry) -> NavigationAction {
         match entry {
             Entry::OpenInNewTab(url) => {
-                self.tabs().open_background(&url);
+                self.open_background(&url);
                 NavigationAction::Ignore
             }
             Entry::CopyLink(url) | Entry::CopyImage(url) => NavigationAction::Copy(url),
@@ -498,6 +535,8 @@ impl Navigation {
                 }
             }
 
+            // Tabs saved without a title get one too.
+            self.title_fetches.extend(tabs.untitled_background());
             self.tabs = Some(tabs);
         }
 
@@ -581,7 +620,7 @@ impl Navigation {
     pub fn set_title(&mut self, title: &str) -> bool {
         if let Some(message) = title.strip_prefix(TITLE_MESSAGE) {
             if let Some(url) = message.strip_prefix("open ") {
-                self.tabs().open_background(url.trim());
+                self.open_background(url.trim());
             } else if let Some(body) = message.strip_prefix("probe ") {
                 let entries = Probe::parse(body).entries();
 
@@ -622,7 +661,13 @@ impl Navigation {
         let mut x = 0;
 
         for (index, tab) in tabs.list().iter().enumerate() {
-            let name = if tab.title.trim().is_empty() { tab.url.as_str() } else { tab.title.trim() };
+            let short;
+            let name = if tab.title.trim().is_empty() {
+                short = short_url(&tab.url);
+                short.as_str()
+            } else {
+                tab.title.trim()
+            };
             let room = each - 4;
             let mut label = format!("{} {name}", index + 1);
 
@@ -878,7 +923,7 @@ mod tests {
             .map(|(_, e)| e.text.as_str())
             .collect();
         assert!(strip.starts_with("[1 Example"), "{strip}");
-        assert!(strip.contains("[2 https://b.org/"), "{strip}");
+        assert!(strip.contains("[2 b.org "), "untitled: short url; {strip}");
         assert!(strip.contains("×][+]"), "{strip}");
         assert_eq!(strip.width(), 80);
 
@@ -983,6 +1028,40 @@ mod tests {
         nav.set_title(probe);
         nav.mouse_down((10, 6).into(), 0);
         assert_eq!(nav.tabs().list().last().unwrap().url, "https://d.org/f.pdf");
+    }
+
+    /// A background tab asks for its title and shows a short URL until then;
+    /// the fetched title does not replace a real one.
+    #[test]
+    fn background_tabs_fetch_titles_and_show_short_urls_meanwhile() {
+        let mut nav = nav();
+        nav.set_size(Size::new(120, 23), 2);
+        assert!(nav.take_title_fetches().is_empty());
+
+        nav.set_title("tetron-browser-message:open https://www.w3.org/Icons/w3c_home.png");
+        let fetches = nav.take_title_fetches();
+        assert_eq!(fetches.len(), 1);
+        assert!(nav.take_title_fetches().is_empty(), "taken once");
+        let (id, url) = fetches[0].clone();
+        let strip = |nav: &Navigation| nav.render(Size::new(120, 23)).iter().filter(|(p, _)| p.y == 1).map(|(_, e)| e.text.clone()).collect::<String>();
+        assert!(strip(&nav).contains("w3.org/w3c_home.png"), "{}", strip(&nav));
+
+        nav.set_fetched_title(id, &url, "W3C logo");
+        assert!(strip(&nav).contains("W3C logo"));
+        nav.set_fetched_title(id, &url, "Later fetch");
+        assert!(strip(&nav).contains("W3C logo"), "an existing title stays");
+        nav.set_fetched_title(id, "https://other.org/", "Wrong page");
+        assert!(!strip(&nav).contains("Wrong page"));
+    }
+
+    #[test]
+    fn short_urls_name_host_and_last_part() {
+        assert_eq!(short_url("https://www.w3.org/Icons/w3c_home.png?x=1"), "w3.org/w3c_home.png");
+        assert_eq!(short_url("https://example.com/"), "example.com");
+        assert_eq!(short_url("https://example.com"), "example.com");
+        assert_eq!(short_url("https://a.org/docs/"), "a.org/docs");
+        assert_eq!(short_url("file:///home/u/my%20page.html"), "my page.html");
+        assert_eq!(short_url("about:blank"), "about:blank");
     }
 
     #[test]

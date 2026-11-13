@@ -219,24 +219,28 @@ pub extern "C" fn carbonyl_renderer_push_nav(
     can_go_back: bool,
     can_go_forward: bool,
 ) {
-    let (bridge, url) = unsafe { (bridge.as_ref(), CStr::from_ptr(url)) };
-    let (mut bridge, url) = (bridge.unwrap().lock().unwrap(), url.to_owned());
+    let shared: &'static Mutex<RendererBridge> = unsafe { &*bridge };
+    let url = unsafe { CStr::from_ptr(url) }.to_owned();
 
-    bridge.renderer.render(move |renderer| {
+    shared.lock().unwrap().renderer.render(move |renderer| {
         if let Some(script) = renderer.push_nav(url.to_str().unwrap(), can_go_back, can_go_forward) {
             go_to(script)
         }
+
+        // The first page loads the saved tabs: titles missing there.
+        fetch_titles(shared, renderer.take_title_fetches());
     });
 }
 
 #[no_mangle]
 pub extern "C" fn carbonyl_renderer_set_title(bridge: RendererPtr, title: *const c_char) {
-    let (bridge, title) = unsafe { (bridge.as_ref(), CStr::from_ptr(title)) };
-    let (mut bridge, title) = (bridge.unwrap().lock().unwrap(), title.to_owned());
+    let shared: &'static Mutex<RendererBridge> = unsafe { &*bridge };
+    let title = unsafe { CStr::from_ptr(title) }.to_owned();
 
-    bridge
-        .renderer
-        .render(move |renderer| renderer.set_title(title.to_str().unwrap()).unwrap());
+    shared.lock().unwrap().renderer.render(move |renderer| {
+        renderer.set_title(title.to_str().unwrap()).unwrap();
+        fetch_titles(shared, renderer.take_title_fetches());
+    });
 }
 
 #[no_mangle]
@@ -331,6 +335,19 @@ fn go_to(url: String) {
     let Ok(url) = CString::new(url) else { return };
 
     unsafe { post_task(delegate.post_task, move || (delegate.go_to)(url.as_ptr())) }
+}
+
+/// Fetches the titles of background tabs, each in its own thread, and hands
+/// them to the renderer (see `page_title`).
+fn fetch_titles(bridge: &'static Mutex<RendererBridge>, fetches: Vec<(u64, String)>) {
+    for (id, url) in fetches {
+        thread::spawn(move || {
+            if let Some(title) = crate::page_title::fetch(&url) {
+                log::debug!("background tab {id} title: {title}");
+                bridge.lock().unwrap().renderer.render(move |r| r.set_fetched_title(id, &url, &title));
+            }
+        });
+    }
 }
 
 extern "C" fn post_task_handler(callback: *mut c_void) {
@@ -451,6 +468,9 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                     return false;
                 };
 
+                // Tabs opened from the menu, or restored without a title.
+                let fetch_after = |renderer: &mut crate::output::Renderer| fetch_titles(bridge, renderer.take_title_fetches());
+
                 for event in std::mem::take(&mut events) {
                     use Event::*;
 
@@ -503,6 +523,8 @@ pub extern "C" fn carbonyl_renderer_listen(bridge: RendererPtr, delegate: *mut B
                         },
                     }
                 }
+
+                fetch_after(renderer);
             })
         })
         .unwrap();
